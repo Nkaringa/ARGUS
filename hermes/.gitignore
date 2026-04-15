@@ -1,0 +1,24 @@
+# hermes — workspace-local ignores (workspace deps are hoisted to root node_modules)
+
+# Environment — contains seeded session UUIDs and optional API_KEY
+.env
+.env.local
+.env.*.local
+
+# Runtime database (per-install, never committed)
+hermes.db
+hermes.db-journal
+
+# Runtime artifacts emitted by the agents — these belong to each user's runs,
+# not to the repo. They regenerate on every task.
+Plan.md
+Build-Log.md
+Build-Feedback.md
+WarZone.md
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store

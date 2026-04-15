@@ -1,0 +1,19 @@
+{
+  "name": "hermes",
+  "version": "0.1.0",
+  "description": "Orchestration engine for Argus — runs the build, chat, and warzone agent servers",
+  "scripts": {
+    "chat": "node servers/chat.js",
+    "build": "node servers/build.js",
+    "warzone": "node servers/warzone.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "chokidar": "^3.6.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "nats": "^2.28.2",
+    "ws": "^8.17.0",
+    "xstate": "^5.14.0"
+  }
+}

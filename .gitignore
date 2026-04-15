@@ -1,0 +1,46 @@
+# ─── Workspaces ───────────────────────────────────────────────
+# npm workspaces hoist all deps to the root node_modules.
+# hermes/node_modules and argus-ui/node_modules would only exist
+# if someone ran `npm install` inside a sub-package by mistake.
+node_modules/
+hermes/node_modules/
+argus-ui/node_modules/
+
+# ─── Environment / secrets ────────────────────────────────────
+.env
+.env.local
+.env.*.local
+hermes/.env
+hermes/.env.local
+
+# ─── Runtime artifacts ────────────────────────────────────────
+# Agents write these during a build. Never committed — they regenerate per run
+# and contain user-specific content.
+Plan.md
+Build-Log.md
+Build-Feedback.md
+WarZone.md
+
+# Runtime database
+hermes/hermes.db
+hermes/hermes.db-journal
+
+# ─── Build output ─────────────────────────────────────────────
+argus-ui/dist/
+argus-ui/dist-ssr/
+argus-ui/.vite/
+
+# ─── Landing site (separate repo) ─────────────────────────────
+# The landing page is pushed to its own repository.
+landing/
+
+# ─── Logs ─────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ─── OS / editor ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

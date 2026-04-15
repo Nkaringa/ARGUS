@@ -1,0 +1,26 @@
+{
+  "name": "argus",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Argus — a three-agent orchestration platform for software engineering (Claude plans, Gemini builds, Codex audits).",
+  "workspaces": [
+    "hermes",
+    "argus-ui"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n chat,build,warzone,ui --prefix-colors cyan,green,yellow,magenta \"node hermes/servers/chat.js\" \"node hermes/servers/build.js\" \"node hermes/servers/warzone.js\" \"npm run dev --workspace argus-ui\"",
+    "dev:backend": "concurrently -n chat,build,warzone --prefix-colors cyan,green,yellow \"node hermes/servers/chat.js\" \"node hermes/servers/build.js\" \"node hermes/servers/warzone.js\"",
+    "dev:chat": "node hermes/servers/chat.js",
+    "dev:build": "node hermes/servers/build.js",
+    "dev:warzone": "node hermes/servers/warzone.js",
+    "dev:ui": "npm run dev --workspace argus-ui",
+    "build:ui": "npm run build --workspace argus-ui",
+    "lint:ui": "npm run lint --workspace argus-ui"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

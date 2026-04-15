@@ -1,0 +1,79 @@
+{
+  "builder": {
+    "name": "Gemini",
+    "model": "gemini",
+    "role": "build",
+    "command": "gemini --resume {GEMINI_SESSION_ID} -p \"{task}\" -y",
+    "timeout": 300000,
+    "completionSignal": {
+      "type": "file_append",
+      "file": "Build-Log.md",
+      "pattern": "### Iteration"
+    },
+    "suppressStderr": true,
+    "noisePatterns": [
+      "^YOLO mode is enabled",
+      "^\\[ERROR\\] \\[IDEClient\\]",
+      "^MCP issues detected",
+      "^Invalid configuration",
+      "^Please fix the configuration",
+      "^See: https://",
+      "^Error in:"
+    ]
+  },
+  "planner": {
+    "name": "Claude",
+    "model": "claude",
+    "role": "plan",
+    "command": "claude --resume {CLAUDE_SESSION_ID} --allowedTools Edit Write Read Glob Grep -p \"{task}\" < /dev/null",
+    "timeout": 240000,
+    "completionSignal": {
+      "type": "file_content",
+      "file": "Plan.md",
+      "pattern": "\\*\\*Plan Status:\\*\\*\\s*READY"
+    }
+  },
+  "codex_auditor": {
+    "name": "Codex",
+    "model": "codex",
+    "role": "audit",
+    "command": "codex exec resume {CODEX_SESSION_ID} --full-auto --skip-git-repo-check \"{task}\"",
+    "timeout": 240000,
+    "completionSignal": {
+      "type": "file_append",
+      "file": "Build-Feedback.md",
+      "pattern": "### Iteration"
+    }
+  },
+  "discuss_builder": {
+    "name": "Gemini",
+    "model": "gemini",
+    "role": "discuss_build",
+    "command": "gemini --resume {GEMINI_SESSION_ID} -p \"{task}\" -y",
+    "timeout": 180000,
+    "suppressStderr": true,
+    "noisePatterns": [
+      "^YOLO mode is enabled",
+      "^\\[ERROR\\] \\[IDEClient\\]",
+      "^MCP issues detected",
+      "^Invalid configuration",
+      "^Please fix the configuration",
+      "^See: https://",
+      "^Error in:"
+    ]
+  },
+  "discuss_planner": {
+    "name": "Claude",
+    "model": "claude",
+    "role": "discuss_plan",
+    "command": "claude --resume {CLAUDE_SESSION_ID} --allowedTools Edit Write Read Glob Grep -p \"{task}\" < /dev/null",
+    "timeout": 180000
+  },
+  "discuss_codex": {
+    "name": "Codex",
+    "model": "codex",
+    "role": "discuss_audit",
+    "command": "codex exec resume {CODEX_SESSION_ID} --full-auto --skip-git-repo-check \"{task}\"",
+    "timeout": 180000
+  }
+}

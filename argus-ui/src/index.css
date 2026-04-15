@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+:root {
+  --sidebar-width: 280px;
+  --bmw-blue: #1c69d4;
+  --bmw-focus: #0653b6;
+  --bmw-ink: #262626;
+  --bmw-meta: #757575;
+  --bmw-silver: #bbbbbb;
+  --font-display: 'BMWTypeNextLatin Light', 'Helvetica', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', sans-serif;
+  --font-body: 'BMWTypeNextLatin', 'Helvetica', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #ffffff;
+  color: #262626;
+  font-family: var(--font-body);
+  font-weight: 400;
+  line-height: 1.15;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Zero-radius scrollbar — BMW is sharp-cornered everywhere */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #bbbbbb; border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: #757575; }
