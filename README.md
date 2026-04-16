@@ -24,14 +24,28 @@ On a non-A grade, you approve in the UI and Gemini revises from the same plan us
 
 ### Prerequisites
 
-- **Node.js ≥ 20** — `node --version`
-- **`nats-server`** in PATH — `brew install nats-server` on macOS
-- **Three agent CLIs**, each installed and authenticated with your own subscription:
+Argus works on **macOS, Linux, and Windows**. The requirements below are the same everywhere — only the installer differs per OS.
+
+- **Node.js ≥ 20** — check with `node --version`
+  - Any install method works (nodejs.org installer, `nvm`, `fnm`, `volta`, `brew install node`, `apt install nodejs`, `winget install OpenJS.NodeJS`, etc.)
+- **`nats-server`** in PATH — check with `nats-server --version`
+
+  | OS | Install |
+  |---|---|
+  | macOS | `brew install nats-server` |
+  | Linux (Debian/Ubuntu) | Download the binary from [nats.io/download](https://nats.io/download/) and drop it in `/usr/local/bin` |
+  | Linux (via Go) | `go install github.com/nats-io/nats-server/v2@latest` |
+  | Windows | `scoop install nats-server` or `choco install nats-server` or binary from [nats.io/download](https://nats.io/download/) |
+  | Any OS (Docker) | `docker run -p 4222:4222 nats:latest` |
+
+- **Three agent CLIs**, each installed and authenticated with your own subscription (all three are cross-platform via npm):
   - `claude` — [Claude Code](https://docs.claude.com/claude-code)
   - `gemini` — [Gemini CLI](https://github.com/google-gemini/gemini-cli)
   - `codex` — [Codex CLI](https://github.com/openai/codex)
 
 Argus never bundles or proxies the agents. You use your own accounts.
+
+> **Windows note:** the root `npm run dev` script uses shell quoting that works in POSIX shells (macOS zsh/bash, Linux bash). On Windows, run the four processes in separate terminals using the individual scripts (`npm run dev:chat`, `npm run dev:build`, `npm run dev:warzone`, `npm run dev:ui`), or use WSL.
 
 ### Install
 

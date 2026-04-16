@@ -16,8 +16,14 @@ function StatusBadge({ state }: { state: BuildState | WarzoneState }) {
   const label = busy ? state.toUpperCase().replace(/_/g, ' ') : 'IDLE';
   return (
     <span
-      className={clsx('uppercase', busy ? 'text-[#1c69d4]' : 'text-[#bbbbbb]')}
-      style={{ fontSize: 12, fontWeight: 400, letterSpacing: '0.15em' }}
+      className={clsx('uppercase')}
+      style={{
+        fontSize: 11,
+        fontWeight: 500,
+        letterSpacing: '0.15em',
+        fontFamily: 'var(--font-mono)',
+        color: busy ? 'var(--color-accent)' : 'var(--color-fg-2)',
+      }}
     >
       {label}
     </span>
@@ -39,16 +45,24 @@ function NavItem({
   return (
     <button
       onClick={onClick}
-      className={clsx(
-        'block w-full text-left uppercase transition-colors',
-        'text-white hover:text-white'
-      )}
+      className="block w-full text-left uppercase transition-colors"
       style={{
-        fontSize: 18,
-        fontWeight: 900,
+        fontSize: 15,
+        fontWeight: 600,
         lineHeight: 1.3,
-        padding: '14px 32px',
-        borderLeft: active ? '2px solid #1c69d4' : '2px solid transparent',
+        letterSpacing: '0.06em',
+        padding: '12px 32px',
+        color: active ? 'var(--color-fg-0)' : 'var(--color-fg-1)',
+        borderLeft: active
+          ? '2px solid var(--color-accent)'
+          : '2px solid transparent',
+        background: 'transparent',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.color = 'var(--color-fg-0)';
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.color = 'var(--color-fg-1)';
       }}
     >
       {label}
@@ -71,18 +85,24 @@ function SubNavItem({
   return (
     <button
       onClick={onClick}
-      className={clsx(
-        'block w-full text-left transition-colors',
-        active ? 'text-white' : 'text-[#bbbbbb] hover:text-white'
-      )}
+      className="block w-full text-left transition-colors"
       style={{
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: 400,
-        lineHeight: 1.15,
-        padding: '10px 32px 10px 48px',
+        lineHeight: 1.3,
+        fontFamily: 'var(--font-mono)',
+        padding: '8px 32px 8px 48px',
+        color: active ? 'var(--color-accent)' : 'var(--color-fg-1)',
+        background: 'transparent',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.color = 'var(--color-fg-0)';
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.color = 'var(--color-fg-1)';
       }}
     >
-      {label}
+      [{label}]
     </button>
   );
 }
@@ -90,12 +110,15 @@ function SubNavItem({
 function GroupLabel({ children }: { children: string }) {
   return (
     <p
-      className="uppercase text-[#bbbbbb]"
+      className="uppercase"
       style={{
-        fontSize: 12,
-        fontWeight: 400,
+        fontSize: 11,
+        fontWeight: 500,
         letterSpacing: '0.15em',
-        padding: '24px 32px 12px',
+        color: 'var(--color-fg-2)',
+        fontFamily: 'var(--font-mono)',
+        padding: '24px 32px 10px',
+        margin: 0,
       }}
     >
       {children}
@@ -103,7 +126,13 @@ function GroupLabel({ children }: { children: string }) {
   );
 }
 
-export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop }: SidebarProps) {
+export function Sidebar({
+  current,
+  onNavigate,
+  buildState,
+  warzoneState,
+  onStop,
+}: SidebarProps) {
   const [resetOpen, setResetOpen] = useState(false);
 
   const overallBusy =
@@ -113,24 +142,29 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
   return (
     <>
       <aside
-        style={{ width: 'var(--sidebar-width)', background: '#262626' }}
+        style={{
+          width: 'var(--sidebar-width)',
+          background: 'var(--color-ink-1)',
+          borderRight: '1px solid var(--color-ink-3)',
+        }}
         className="flex-shrink-0 flex flex-col h-full"
       >
         {/* Brand */}
-        <div style={{ padding: '40px 32px 32px' }}>
+        <div style={{ padding: '32px 32px 28px' }}>
           <div
-            className="uppercase text-white"
+            className="uppercase"
             style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 32,
-              fontWeight: 300,
-              letterSpacing: '0.1em',
-              lineHeight: 1.3,
+              fontFamily: 'var(--font-sans)',
+              fontSize: 22,
+              fontWeight: 600,
+              letterSpacing: '0.22em',
+              lineHeight: 1.1,
+              color: 'var(--color-fg-0)',
             }}
           >
             Argus
           </div>
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 10 }}>
             <StatusBadge state={activeState} />
           </div>
         </div>
@@ -140,26 +174,31 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
           <div>
             <GroupLabel>Chat</GroupLabel>
             <SubNavItem
-              label="Gemini"
+              label="gemini"
               section="chat-gemini"
               current={current}
               onClick={() => onNavigate('chat-gemini')}
             />
             <SubNavItem
-              label="Claude"
+              label="claude"
               section="chat-claude"
               current={current}
               onClick={() => onNavigate('chat-claude')}
             />
             <SubNavItem
-              label="Codex"
+              label="codex"
               section="chat-codex"
               current={current}
               onClick={() => onNavigate('chat-codex')}
             />
           </div>
 
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '16px 0' }} />
+          <div
+            style={{
+              borderTop: '1px solid var(--color-ink-3)',
+              margin: '16px 0',
+            }}
+          />
 
           <div>
             <GroupLabel>Work</GroupLabel>
@@ -177,7 +216,12 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
             />
           </div>
 
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '16px 0' }} />
+          <div
+            style={{
+              borderTop: '1px solid var(--color-ink-3)',
+              margin: '16px 0',
+            }}
+          />
 
           <div>
             <GroupLabel>History</GroupLabel>
@@ -191,16 +235,25 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
         </nav>
 
         {/* Bottom controls */}
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ borderTop: '1px solid var(--color-ink-3)' }}>
           <button
             onClick={() => setResetOpen(true)}
-            className="block w-full text-left uppercase text-[#bbbbbb] hover:text-white transition-colors"
+            className="block w-full text-left uppercase transition-colors"
             style={{
-              fontSize: 14,
+              fontSize: 12,
               fontWeight: 400,
               letterSpacing: '0.15em',
-              padding: '16px 32px',
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              fontFamily: 'var(--font-mono)',
+              padding: '14px 32px',
+              color: 'var(--color-fg-1)',
+              background: 'transparent',
+              borderBottom: '1px solid var(--color-ink-3)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--color-accent)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--color-fg-1)';
             }}
           >
             Reset Sessions
@@ -209,15 +262,18 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
           {overallBusy && (
             <button
               onClick={onStop}
-              className="block w-full text-left uppercase text-white transition-colors"
+              className="block w-full text-left uppercase transition-colors"
               style={{
-                fontSize: 14,
-                fontWeight: 700,
+                fontSize: 13,
+                fontWeight: 600,
                 letterSpacing: '0.15em',
-                padding: '16px 32px',
+                fontFamily: 'var(--font-mono)',
+                padding: '14px 32px',
+                color: 'var(--color-danger)',
+                background: 'transparent',
               }}
             >
-              Stop →
+              Stop ×
             </button>
           )}
         </div>

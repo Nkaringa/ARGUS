@@ -27,7 +27,13 @@ function DiscussProgress({ state }: { state: WarzoneState }) {
     { key: 'discussing_codex', label: 'Codex' },
     { key: 'awaiting_discuss_approval', label: 'Review' },
   ];
-  const order = ['idle', 'discussing_claude', 'discussing_gemini', 'discussing_codex', 'awaiting_discuss_approval'];
+  const order = [
+    'idle',
+    'discussing_claude',
+    'discussing_gemini',
+    'discussing_codex',
+    'awaiting_discuss_approval',
+  ];
   const currentIdx = order.indexOf(state);
 
   return (
@@ -43,14 +49,14 @@ function DiscussProgress({ state }: { state: WarzoneState }) {
               className="flex-1"
               style={{
                 height: done || active ? 2 : 1,
-                background: done || active ? '#1c69d4' : '#bbbbbb',
+                background: done || active ? 'var(--color-accent)' : 'var(--color-ink-3)',
                 marginRight: 2,
               }}
             />
           );
         })}
       </div>
-      <div className="flex w-full mt-2">
+      <div className="flex w-full" style={{ marginTop: 8 }}>
         {steps.map((step) => {
           const stepIdx = order.indexOf(step.key);
           const done = currentIdx > stepIdx;
@@ -60,10 +66,11 @@ function DiscussProgress({ state }: { state: WarzoneState }) {
               key={step.key}
               className="flex-1 uppercase"
               style={{
-                fontSize: 12,
-                fontWeight: 400,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                fontWeight: 500,
                 letterSpacing: '0.15em',
-                color: done || active ? '#262626' : '#bbbbbb',
+                color: done || active ? 'var(--color-fg-0)' : 'var(--color-fg-2)',
               }}
             >
               {step.label}
@@ -85,21 +92,25 @@ function DiscussionPanel({ lines }: { lines: OutputLine[] }) {
     <div
       className="flex-1 overflow-y-auto min-h-0"
       style={{
-        background: '#262626',
-        color: '#ffffff',
-        padding: 32,
-        fontFamily: 'var(--font-body)',
-        fontSize: 14,
-        lineHeight: 1.3,
+        background: 'var(--color-ink-2)',
+        color: 'var(--color-fg-0)',
+        border: '1px solid var(--color-ink-3)',
+        padding: 24,
+        fontFamily: 'var(--font-mono)',
+        fontSize: 13,
+        lineHeight: 1.55,
       }}
     >
       {lines.length === 0 ? (
-        <p style={{ color: '#757575' }}>Agent discussion will appear here.</p>
+        <p style={{ color: 'var(--color-fg-2)' }}>
+          Agent discussion will appear here.
+        </p>
       ) : (
         lines.map((l, i) => (
           <div key={i}>
-            <span style={{ color: '#bbbbbb' }}>[{l.agent}]</span>{' '}
-            <span style={{ color: '#ffffff' }}>{l.line}</span>
+            <span style={{ color: 'var(--color-accent)' }}>[{l.agent}]</span>{' '}
+            <span style={{ color: 'var(--color-fg-2)' }}>·</span>{' '}
+            <span style={{ color: 'var(--color-fg-0)' }}>{l.line}</span>
           </div>
         ))
       )}
@@ -108,9 +119,19 @@ function DiscussionPanel({ lines }: { lines: OutputLine[] }) {
   );
 }
 
-export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }: WarzoneViewProps) {
+export function WarzoneView({
+  state,
+  idea,
+  lines,
+  onSubmit,
+  onApprove,
+  onAbort,
+}: WarzoneViewProps) {
   const [input, setInput] = useState('');
-  const busy = state === 'discussing_claude' || state === 'discussing_gemini' || state === 'discussing_codex';
+  const busy =
+    state === 'discussing_claude' ||
+    state === 'discussing_gemini' ||
+    state === 'discussing_codex';
   const showForm = state === 'idle';
   const showApproval = state === 'awaiting_discuss_approval';
 
@@ -129,34 +150,73 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
   };
 
   return (
-    <div className="flex flex-col h-full bg-white text-[#262626]">
+    <div
+      className="flex flex-col h-full"
+      style={{
+        background: 'var(--color-ink-0)',
+        color: 'var(--color-fg-0)',
+      }}
+    >
       {/* Header */}
-      <div className="shrink-0" style={{ padding: '48px 60px 32px', borderBottom: '1px solid #bbbbbb' }}>
+      <div
+        className="shrink-0"
+        style={{
+          padding: '40px 60px 28px',
+          borderBottom: '1px solid var(--color-ink-3)',
+        }}
+      >
         <div className="flex items-start justify-between">
           <div>
-            <h1
+            <p
               className="uppercase"
               style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 60,
-                fontWeight: 300,
-                lineHeight: 1.3,
-                letterSpacing: '0.02em',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                fontWeight: 500,
+                letterSpacing: '0.15em',
+                color: 'var(--color-accent)',
+                marginBottom: 10,
+              }}
+            >
+              Three-agent discussion
+            </p>
+            <h1
+              style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize: 44,
+                fontWeight: 400,
+                lineHeight: 1.1,
+                letterSpacing: '-0.02em',
+                margin: 0,
+                color: 'var(--color-fg-0)',
               }}
             >
               Warzone
             </h1>
-            <p style={{ fontSize: 14, fontWeight: 400, color: '#757575', marginTop: 8 }}>
-              Sequential agent discussion
+            <p
+              style={{
+                fontSize: 14,
+                fontWeight: 400,
+                color: 'var(--color-fg-1)',
+                marginTop: 8,
+              }}
+            >
+              Sequential pre-build discussion.
             </p>
           </div>
           <span
-            className={clsx('uppercase', busy ? 'text-[#1c69d4]' : showApproval ? 'text-[#262626]' : 'text-[#bbbbbb]')}
+            className={clsx('uppercase')}
             style={{
-              fontSize: 12,
-              fontWeight: 400,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              fontWeight: 500,
               letterSpacing: '0.15em',
-              paddingTop: 24,
+              paddingTop: 18,
+              color: busy
+                ? 'var(--color-accent)'
+                : showApproval
+                  ? 'var(--color-fg-0)'
+                  : 'var(--color-fg-2)',
             }}
           >
             {STATE_LABELS[state]}
@@ -164,7 +224,7 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
         </div>
 
         {state !== 'idle' && (
-          <div style={{ marginTop: 32 }}>
+          <div style={{ marginTop: 28 }}>
             <DiscussProgress state={state} />
           </div>
         )}
@@ -172,43 +232,63 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
         {idea && (
           <p
             className="truncate"
-            style={{ marginTop: 24, fontSize: 14, fontWeight: 400, color: '#757575', lineHeight: 1.3 }}
+            style={{
+              marginTop: 24,
+              fontSize: 14,
+              fontWeight: 400,
+              color: 'var(--color-fg-1)',
+              lineHeight: 1.3,
+              fontFamily: 'var(--font-mono)',
+            }}
           >
-            {idea}
+            › {idea}
           </p>
         )}
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col min-h-0" style={{ padding: '40px 60px', gap: 32 }}>
+      <div
+        className="flex-1 flex flex-col min-h-0"
+        style={{ padding: '32px 60px', gap: 28 }}
+      >
         {/* Explanation when idle */}
         {state === 'idle' && lines.length === 0 && (
           <div style={{ maxWidth: 720 }}>
             <h2
               className="uppercase"
               style={{
-                fontFamily: 'var(--font-body)',
-                fontSize: 18,
-                fontWeight: 900,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                fontWeight: 500,
                 letterSpacing: '0.15em',
-                color: '#262626',
+                color: 'var(--color-fg-2)',
                 marginBottom: 16,
               }}
             >
-              How Warzone Works
+              How warzone works
             </h2>
-            <ol style={{ fontSize: 16, fontWeight: 400, color: '#262626', lineHeight: 1.5, paddingLeft: 24 }}>
-              <li>Claude frames the idea as a planner (files, approach, gotchas)</li>
-              <li>Gemini proposes a build approach (stack, steps, concerns)</li>
-              <li>Codex audits both takes and pokes holes</li>
-              <li>You review WarZone.md, then approve</li>
-              <li>Take the discussion to Build and reference WarZone.md in your prompt</li>
+            <ol
+              style={{
+                fontSize: 15,
+                fontWeight: 400,
+                color: 'var(--color-fg-1)',
+                lineHeight: 1.6,
+                paddingLeft: 24,
+                margin: 0,
+              }}
+            >
+              <li>Claude frames the idea as a planner (files, approach, gotchas).</li>
+              <li>Gemini proposes a build approach (stack, steps, concerns).</li>
+              <li>Codex audits both takes and pokes holes.</li>
+              <li>You review WarZone.md, then approve.</li>
+              <li>
+                Take the discussion to Build and reference WarZone.md in your prompt.
+              </li>
             </ol>
           </div>
         )}
 
-        {/* During the three agent phases, stream raw log output.
-            When the discussion completes, swap to the pretty-printed markdown review. */}
+        {/* During busy phases: raw log. On complete: pretty-printed markdown review. */}
         {showApproval ? (
           <DiscussionReview refreshKey={state} />
         ) : (
@@ -217,48 +297,85 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
 
         {/* Approval */}
         {showApproval && (
-          <div className="shrink-0 bg-white" style={{ padding: '32px 0' }}>
+          <div
+            className="shrink-0"
+            style={{
+              background: 'var(--color-ink-1)',
+              border: '1px solid var(--color-ink-3)',
+              padding: 28,
+            }}
+          >
             <h2
               className="uppercase"
               style={{
-                fontFamily: 'var(--font-body)',
-                fontSize: 18,
-                fontWeight: 900,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                fontWeight: 500,
                 letterSpacing: '0.15em',
-                color: '#262626',
-                marginBottom: 12,
+                color: 'var(--color-fg-1)',
+                margin: 0,
+                marginBottom: 10,
               }}
             >
-              Discussion Ready
+              Discussion ready
             </h2>
-            <p style={{ fontSize: 16, fontWeight: 400, color: '#757575', lineHeight: 1.3, marginBottom: 32 }}>
-              All three agents have written their takes. Approve to save WarZone.md as a reference, then use it in Build.
+            <p
+              style={{
+                fontSize: 15,
+                color: 'var(--color-fg-1)',
+                lineHeight: 1.55,
+                margin: 0,
+                marginBottom: 24,
+              }}
+            >
+              All three agents have written their takes. Approve to save
+              WarZone.md as a reference, then use it in Build.
             </p>
-            <div className="flex items-center" style={{ gap: 24 }}>
+            <div className="flex items-center" style={{ gap: 16 }}>
               <button
                 onClick={onApprove}
-                className="uppercase bg-[#1c69d4] text-white border border-[#1c69d4] hover:bg-[#0653b6] hover:border-[#0653b6] transition-colors"
                 style={{
-                  fontSize: 16,
-                  fontWeight: 700,
+                  fontSize: 14,
+                  fontWeight: 600,
                   lineHeight: 1.2,
-                  letterSpacing: '0.05em',
-                  padding: '16px 32px',
+                  letterSpacing: '0.02em',
+                  padding: '12px 22px',
+                  background: 'var(--color-accent)',
+                  color: 'var(--color-ink-0)',
+                  border: '1px solid var(--color-accent)',
+                  cursor: 'pointer',
+                  transition: 'background 150ms ease-out, border-color 150ms ease-out',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--color-accent-dim)';
+                  e.currentTarget.style.borderColor = 'var(--color-accent-dim)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--color-accent)';
+                  e.currentTarget.style.borderColor = 'var(--color-accent)';
                 }}
               >
                 Approve →
               </button>
               <button
                 onClick={onAbort}
-                className="uppercase text-[#262626] hover:text-[#1c69d4] transition-colors"
+                className="uppercase"
                 style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                  lineHeight: 1.15,
-                  letterSpacing: '0.05em',
-                  padding: '16px 0 12px',
-                  borderBottom: '1px solid currentColor',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  letterSpacing: '0.15em',
+                  padding: '10px 0 8px',
+                  color: 'var(--color-danger)',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: '1px solid var(--color-danger)',
+                  cursor: 'pointer',
+                  opacity: 0.8,
+                  transition: 'opacity 150ms ease-out',
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.8')}
               >
                 Discard
               </button>
@@ -275,43 +392,73 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
               onKeyDown={handleKeyDown}
               placeholder="What do you want to discuss? (e.g. build a real-time dashboard for Argus)"
               rows={3}
-              className="w-full bg-transparent outline-none resize-none"
+              className="w-full outline-none resize-none"
               style={{
-                fontFamily: 'var(--font-body)',
-                fontSize: 16,
+                fontFamily: 'var(--font-sans)',
+                fontSize: 15,
                 fontWeight: 400,
-                color: '#262626',
-                lineHeight: 1.3,
-                padding: '16px 0 12px',
-                borderBottom: '1px solid #262626',
+                color: 'var(--color-fg-0)',
+                lineHeight: 1.55,
+                padding: '14px 0 12px',
+                background: 'transparent',
+                borderBottom: '1px solid var(--color-ink-3)',
+                borderTop: 'none',
+                borderLeft: 'none',
+                borderRight: 'none',
+                transition: 'border-color 150ms ease-out',
               }}
-              onFocus={(e) => (e.currentTarget.style.borderBottom = '2px solid #1c69d4')}
-              onBlur={(e) => (e.currentTarget.style.borderBottom = '1px solid #262626')}
+              onFocus={(e) => {
+                e.currentTarget.style.borderBottom = '2px solid var(--color-accent)';
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderBottom = '1px solid var(--color-ink-3)';
+              }}
             />
-            <div className="flex items-center justify-between" style={{ marginTop: 24 }}>
+            <div
+              className="flex items-center justify-between"
+              style={{ marginTop: 20 }}
+            >
               <p
                 className="uppercase"
-                style={{ fontSize: 12, color: '#757575', letterSpacing: '0.15em' }}
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  color: 'var(--color-fg-2)',
+                  letterSpacing: '0.15em',
+                  margin: 0,
+                }}
               >
                 Enter to submit · Shift + Enter for new line
               </p>
               <button
                 onClick={handleSubmit}
                 disabled={!input.trim()}
-                className={
-                  !input.trim()
-                    ? 'uppercase border border-[#bbbbbb] text-[#bbbbbb] cursor-not-allowed bg-transparent'
-                    : 'uppercase bg-[#1c69d4] text-white border border-[#1c69d4] hover:bg-[#0653b6] hover:border-[#0653b6] transition-colors'
-                }
                 style={{
-                  fontSize: 16,
-                  fontWeight: 700,
+                  fontSize: 14,
+                  fontWeight: 600,
                   lineHeight: 1.2,
-                  letterSpacing: '0.05em',
-                  padding: '16px 32px',
+                  letterSpacing: '0.02em',
+                  padding: '12px 22px',
+                  background: !input.trim() ? 'transparent' : 'var(--color-accent)',
+                  color: !input.trim() ? 'var(--color-fg-2)' : 'var(--color-ink-0)',
+                  border: `1px solid ${!input.trim() ? 'var(--color-ink-3)' : 'var(--color-accent)'}`,
+                  cursor: !input.trim() ? 'not-allowed' : 'pointer',
+                  transition: 'background 150ms ease-out, border-color 150ms ease-out',
+                }}
+                onMouseEnter={(e) => {
+                  if (input.trim()) {
+                    e.currentTarget.style.background = 'var(--color-accent-dim)';
+                    e.currentTarget.style.borderColor = 'var(--color-accent-dim)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (input.trim()) {
+                    e.currentTarget.style.background = 'var(--color-accent)';
+                    e.currentTarget.style.borderColor = 'var(--color-accent)';
+                  }
                 }}
               >
-                Start Discussion →
+                Start discussion →
               </button>
             </div>
           </div>

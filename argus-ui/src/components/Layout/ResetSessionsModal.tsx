@@ -25,66 +25,87 @@ export function ResetSessionsModal({ open, onClose }: ResetSessionsModalProps) {
     <div
       onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.8)' }}
+      style={{ background: 'rgba(0,0,0,0.78)' }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white text-[#262626]"
-        style={{ width: 640, padding: 48 }}
+        style={{
+          background: 'var(--color-ink-1)',
+          border: '1px solid var(--color-ink-3)',
+          color: 'var(--color-fg-0)',
+          width: 640,
+          padding: 40,
+        }}
       >
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex items-start justify-between" style={{ marginBottom: 28 }}>
           <h2
-            className="uppercase"
             style={{
-              fontFamily: 'var(--font-display)',
-              fontWeight: 300,
-              fontSize: 48,
-              lineHeight: 1.3,
-              letterSpacing: '0.02em',
+              fontFamily: 'var(--font-sans)',
+              fontSize: 28,
+              fontWeight: 500,
+              lineHeight: 1.2,
+              letterSpacing: '-0.01em',
+              margin: 0,
+              color: 'var(--color-fg-0)',
             }}
           >
-            Reset Sessions
+            Reset sessions
           </h2>
           <button
             onClick={onClose}
-            className="uppercase text-[14px] text-[#262626] hover:text-[#1c69d4] transition-colors"
+            className="uppercase transition-colors"
             style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
               fontWeight: 400,
               letterSpacing: '0.15em',
-              borderBottom: '1px solid currentColor',
-              paddingBottom: 2,
+              color: 'var(--color-fg-1)',
+              background: 'transparent',
+              border: 'none',
+              padding: '4px 0',
+              cursor: 'pointer',
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-accent)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-fg-1)')}
           >
-            Close
+            [close]
           </button>
         </div>
 
         <p
-          className="text-[#262626]"
-          style={{ fontSize: 16, lineHeight: 1.3, fontWeight: 400 }}
+          style={{
+            fontSize: 15,
+            lineHeight: 1.55,
+            fontWeight: 400,
+            color: 'var(--color-fg-1)',
+            margin: 0,
+          }}
         >
-          Argus never creates agent sessions. All three bots are invoked with
-          {' '}<code className="bg-[#262626] text-white px-1.5 py-0.5">--resume &lt;UUID&gt;</code>{' '}
-          from values in <code className="bg-[#262626] text-white px-1.5 py-0.5">hermes/.env</code>.
-          To rotate context, seed fresh UUIDs and restart Hermes — Argus has no
-          server-side session state to clear.
+          Argus never creates agent sessions. All three bots are invoked with{' '}
+          <code className="inline-code">--resume &lt;UUID&gt;</code> from values in{' '}
+          <code className="inline-code">hermes/.env</code>. To rotate context,
+          seed fresh UUIDs and restart Hermes — Argus has no server-side session
+          state to clear.
         </p>
 
         <h3
-          className="uppercase mt-10 mb-4"
+          className="uppercase"
           style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 900,
-            fontSize: 18,
+            fontFamily: 'var(--font-mono)',
+            fontWeight: 500,
+            fontSize: 12,
             letterSpacing: '0.15em',
+            color: 'var(--color-fg-2)',
+            marginTop: 36,
+            marginBottom: 16,
           }}
         >
-          Rotation Steps
+          Rotation steps
         </h3>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <CodeBlock
-            label="Claude"
+            label="claude"
             lines={[
               'cd $WORK_DIR && claude',
               '# send one message, then /exit cleanly',
@@ -93,7 +114,7 @@ export function ResetSessionsModal({ open, onClose }: ResetSessionsModalProps) {
             ]}
           />
           <CodeBlock
-            label="Gemini"
+            label="gemini"
             lines={[
               'cd $WORK_DIR && gemini',
               '# send one message, then /exit',
@@ -101,28 +122,42 @@ export function ResetSessionsModal({ open, onClose }: ResetSessionsModalProps) {
             ]}
           />
           <CodeBlock
-            label="Codex"
+            label="codex"
             lines={[
-              'cd $WORK_DIR && codex',
-              '# send one message, then /exit',
-              '# copy UUID, paste as CODEX_SESSION_ID',
+              'cd $WORK_DIR && codex exec --full-auto "hello"',
+              '# copy UUID from stdout header',
+              '# paste as CODEX_SESSION_ID',
             ]}
           />
         </div>
 
         <h3
-          className="uppercase mt-10 mb-4"
+          className="uppercase"
           style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 900,
-            fontSize: 18,
+            fontFamily: 'var(--font-mono)',
+            fontWeight: 500,
+            fontSize: 12,
             letterSpacing: '0.15em',
+            color: 'var(--color-fg-2)',
+            marginTop: 28,
+            marginBottom: 12,
           }}
         >
-          Restart Hermes
+          Restart hermes
         </h3>
         <CodeBlock label="" lines={['npm run dev']} />
       </div>
+
+      {/* Inline-code utility — scoped to the modal */}
+      <style>{`
+        .inline-code {
+          background: var(--color-ink-2);
+          color: var(--color-accent);
+          padding: 1px 6px;
+          font-family: var(--font-mono);
+          font-size: 13px;
+        }
+      `}</style>
     </div>
   );
 }
@@ -132,25 +167,31 @@ function CodeBlock({ label, lines }: { label: string; lines: string[] }) {
     <div>
       {label && (
         <p
-          className="uppercase mb-2"
+          className="uppercase"
           style={{
-            color: '#757575',
-            fontSize: 14,
-            fontWeight: 400,
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--color-fg-2)',
+            fontSize: 11,
+            fontWeight: 500,
             letterSpacing: '0.15em',
+            marginBottom: 6,
           }}
         >
           {label}
         </p>
       )}
       <pre
-        className="bg-[#262626] text-white whitespace-pre-wrap"
         style={{
-          fontFamily: 'var(--font-body)',
-          fontSize: 14,
-          lineHeight: 1.3,
-          padding: '16px 24px',
+          background: 'var(--color-ink-2)',
+          color: 'var(--color-fg-0)',
+          border: '1px solid var(--color-ink-3)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 13,
+          lineHeight: 1.5,
+          padding: '12px 16px',
           margin: 0,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
         }}
       >
         {lines.join('\n')}

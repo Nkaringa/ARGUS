@@ -22,7 +22,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-full bg-white">
+    <div className="flex h-full" style={{ background: 'var(--color-ink-0)' }}>
       <Sidebar
         current={section}
         onNavigate={setSection}
