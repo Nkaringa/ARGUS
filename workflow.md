@@ -44,27 +44,21 @@ Submit task via Argus UI
         ↓
 Hermes — state: IDLE → PLANNING
         ↓
-Claude CLI runs:
-  - new project: chooses a slug, writes <slug>-Plan.md
-  - continuation: uses the slug Hermes injected, writes <slug>-Plan.md
-  Either way: ends with **Plan Status:** READY
+Claude CLI runs (writes Plan.md, ends with **Plan Status:** READY)
         ↓
-watcher.js detects *-Plan.md match
-        ↓  publishes: plan.completed { file: '<slug>-Plan.md' }
+watcher.js detects Plan.md match
+        ↓  publishes: plan.completed
 Hermes — state: PLANNING → BUILDING
-  - new mode: slug captured from filename
-  - continue mode: slug must match the pre-set value, else PLAN_FAILED (drift safeguard)
         ↓
-Gemini CLI runs (creates <slug>/ if missing, writes deliverables there,
-                appends iteration entry to <slug>-Build-Log.md at root)
+Gemini CLI runs (reads Plan.md, implements, appends to Build-Log.md)
         ↓
-watcher.js detects new ### Iteration in <slug>-Build-Log.md
+watcher.js detects new ### Iteration in Build-Log.md
         ↓  publishes: agent.completed
 Hermes — state: BUILDING → AUDITING
         ↓
-Codex CLI runs (reads <slug>-Plan.md + latest <slug>-Build-Log iteration, grades)
+Codex CLI runs (reads Plan.md + latest Build-Log iteration, grades)
         ↓
-Codex appends **Audit Grade:** [ABCF] to <slug>-Build-Feedback.md
+Codex appends **Audit Grade:** [ABCF] to Build-Feedback.md
         ↓
 watcher.js detects grade
         ↓  publishes: grade.received
@@ -78,8 +72,8 @@ watcher.js detects grade
         │   State: AUDITING → AWAITING_APPROVAL                      │
         │   UI shows grade + Revise / Skip / Abort buttons           │
         │                                                            │
-        │   Revise → BUILDING (Gemini reads <slug>-Build-Feedback.md │
-        │            <slug>-Plan.md UNCHANGED, Claude not re-invoked)│
+        │   Revise → BUILDING (Gemini reads Build-Feedback.md,       │
+        │            Plan.md UNCHANGED, Claude not re-invoked)       │
         │   Skip   → DONE                                            │
         │   Abort  → IDLE                                            │
         └────────────────────────────────────────────────────────────┘
@@ -92,12 +86,12 @@ IDLE
   → task submitted → PLANNING
 
 PLANNING
-  → any *-Plan.md file ends with **Plan Status:** READY → BUILDING (slug captured)
+  → Plan.md has **Plan Status:** READY → BUILDING
   → agent failed, retry < 1 → PLANNING (retry)
   → agent failed, retry ≥ 1 → PAUSED
 
 BUILDING
-  → new ### Iteration in <slug>-Build-Log.md → AUDITING
+  → new ### Iteration in Build-Log.md → AUDITING
   → agent failed, retry < 1 → BUILDING (retry)
   → agent failed, retry ≥ 1 → PAUSED
 
@@ -133,31 +127,28 @@ Submit idea via Argus UI (Warzone tab)
         ↓
 Hermes — state: IDLE → DISCUSSING_CLAUDE
         ↓
-First round on a fresh topic: Claude picks a slug and creates <slug>-WarZone.md.
-Continuing round on the same topic: Claude appends to the existing <slug>-WarZone.md.
+Claude appends its Planner take to WarZone.md
 Claude appends: **Planner Status:** DONE
         ↓
-watcher.js detects marker → publishes discuss.claude_done { file: '<slug>-WarZone.md' }
-Hermes — state: DISCUSSING_CLAUDE → DISCUSSING_GEMINI (slug captured on first round)
+watcher.js detects marker → publishes discuss.claude_done
+Hermes — state: DISCUSSING_CLAUDE → DISCUSSING_GEMINI
         ↓
-Gemini appends its Build Approach to <slug>-WarZone.md
+Gemini appends its Build Approach
 Gemini appends: **Builder Status:** DONE
         ↓
 watcher.js detects marker → publishes discuss.gemini_done
 Hermes — state: DISCUSSING_GEMINI → DISCUSSING_CODEX
         ↓
-Codex appends its Audit to <slug>-WarZone.md
+Codex appends its Audit
 Codex appends: **Auditor Status:** READY TO BUILD
         ↓
 watcher.js detects marker → publishes discuss.complete
 Hermes — state: DISCUSSING_CODEX → AWAITING_DISCUSS_APPROVAL
         ↓
-UI shows the latest discussion block + Approve / Discard / New Discussion
+UI shows full WarZone.md entry + Approve / Discard
 
-        Approve         → state returns to IDLE; slug persists; next submit
-                          appends another round to the same <slug>-WarZone.md
-        New Discussion  → archives <slug>-WarZone.md into
-                          WarZone-History/<slug>/WarZone.md and clears the slug
+        Approve → state returns to IDLE
+                  (copy the entry's summary into a Build task)
 ```
 
 ### Warzone States
@@ -175,13 +166,10 @@ Claude goes first because framing the idea is a planning task. Gemini then propo
 
 | File | Owner | Ownership rule | Purpose |
 |---|---|---|---|
-| `<slug>-Plan.md` | Claude | one per task; slug picked by Claude (new) or fixed by UI (continue) | Implementation plan for current build task |
-| `<slug>-Build-Log.md` | Gemini | append-only within the task | Iteration log — what was built, which files changed |
-| `<slug>-Build-Feedback.md` | Codex | append-only within the task | Audit grades and findings per iteration |
-| `<slug>/` | Gemini | created on first iteration; persists across continuations | Deliverable folder per project — all code Gemini writes lives here |
-| `Build-History/<slug>/` | Hermes | created the moment a task completes or is aborted | Archive of past tasks' meta files (renamed to `Plan.md`/`Build-Log.md`/`Build-Feedback.md` inside). Deliverables stay in `<slug>/`. |
-| `<slug>-WarZone.md` | all three | append-only within a topic; Claude picks the slug | Three-phase discussion log for one topic |
-| `WarZone-History/<slug>/` | Hermes | created when user clicks **New Discussion** | Archive of past discussion topics |
+| `Plan.md` | Claude | overwrite per task | Implementation plan for current build task |
+| `Build-Log.md` | Gemini | append-only | Iteration log — what was built, which files changed |
+| `Build-Feedback.md` | Codex | append-only | Audit grades and findings per iteration |
+| `WarZone.md` | all three | append-only | Three-phase discussion log |
 | `hermes/core/agents.json` | — | static config | Agent command templates + completion signals |
 | `hermes/.env` | — | static config | `WORK_DIR`, session IDs, ports |
 | `hermes/hermes.db` | — | SQLite | Event stream + task history |
@@ -200,11 +188,10 @@ NK-Base/
 │   ├── core/                  shared infrastructure
 │   │   ├── agents.js          agent runner (buildCommand, runAgent)
 │   │   ├── agents.json        agent configs (6 entries: builder, planner, codex_auditor + 3 discuss variants)
-│   │   ├── archive.js         Build-History move on each submitTask + parseTaskFile helper
 │   │   ├── auth.js            shared-secret auth + CORS
 │   │   ├── db.js              SQLite (logEvent, createTask, completeTask, getHistory)
 │   │   ├── events.js          NATS pub/sub
-│   │   └── watcher.js         file watcher (*-Plan.md, *-Build-Log.md, *-Build-Feedback.md, WarZone.md)
+│   │   └── watcher.js         file watcher (Plan.md, Build-Log.md, Build-Feedback.md, WarZone.md)
 │   │
 │   ├── workflows/
 │   │   ├── build.js           XState — build pipeline
@@ -225,13 +212,10 @@ NK-Base/
 │
 ├── .archive/                  retired files from pre-three-agent era
 │
-├── <slug>/                    deliverable folder per project (Gemini's HTML/CSS/JS/code)
-├── <slug>-Plan.md             created at runtime (Claude; slug picked by Claude or fixed by UI)
-├── <slug>-Build-Log.md        created at runtime (Gemini)
-├── <slug>-Build-Feedback.md   created at runtime (Codex)
-├── <slug>-WarZone.md          created at runtime (all three; one per discussion topic)
-├── Build-History/<slug>/      archive of past build tasks' meta files (Hermes moves them here on next submitTask)
-└── WarZone-History/<slug>/    archive of past discussions (Hermes moves files here on New Discussion)
+├── Plan.md                    created at runtime (Claude)
+├── Build-Log.md               created at runtime (Gemini)
+├── Build-Feedback.md          created at runtime (Codex)
+└── WarZone.md                 created at runtime (all three)
 ```
 
 ---
@@ -243,12 +227,12 @@ NK-Base/
 | `agent.output` | agents.js (stdout/stderr) | build server + warzone server → UI |
 | `chat.output` | agents.js (chat mode) | chat server → UI |
 | `agent.started` | agents.js | build server → UI |
-| `plan.completed` | watcher.js (`*-Plan.md`) | build workflow (extracts slug from filename) |
-| `agent.completed` | watcher.js (`*-Build-Log.md`) | build workflow |
-| `grade.received` | watcher.js (`*-Build-Feedback.md`) | build workflow |
-| `discuss.claude_done` | watcher.js (`*-WarZone.md`) | warzone workflow (extracts slug from filename) |
-| `discuss.gemini_done` | watcher.js (`*-WarZone.md`) | warzone workflow |
-| `discuss.complete` | watcher.js (`*-WarZone.md`) | warzone workflow |
+| `plan.completed` | watcher.js (Plan.md) | build workflow |
+| `agent.completed` | watcher.js (Build-Log.md) | build workflow |
+| `grade.received` | watcher.js (Build-Feedback.md) | build workflow |
+| `discuss.claude_done` | watcher.js (WarZone.md) | warzone workflow |
+| `discuss.gemini_done` | watcher.js (WarZone.md) | warzone workflow |
+| `discuss.complete` | watcher.js (WarZone.md) | warzone workflow |
 
 ---
 
@@ -288,12 +272,12 @@ All three agents use the same model: the user seeds a UUID in `hermes/.env`, and
 | Symptom | Cause | Fix |
 |---|---|---|
 | NATS connection refused | `nats-server` not running | `nats-server &` |
-| Build stuck at PLANNING | Claude didn't write a `<slug>-Plan.md` ending with `**Plan Status:** READY` (common: forgot the slug prefix or the READY marker) | Check build server stdout, re-run |
-| Build stuck at BUILDING | Gemini didn't append a new `### Iteration` to `<slug>-Build-Log.md` | Check build server stdout |
-| Build stuck at AUDITING | Codex didn't write `**Audit Grade:** [ABCF]` to `<slug>-Build-Feedback.md` | Check build server stdout |
-| Warzone stuck at a phase | Missing status marker in the current `<slug>-WarZone.md` for that phase | Check marker format against watcher patterns |
+| Build stuck at PLANNING | Claude didn't end Plan.md with `**Plan Status:** READY` | Check build server stdout, re-run |
+| Build stuck at BUILDING | Gemini didn't append a new `### Iteration` to Build-Log.md | Check build server stdout |
+| Build stuck at AUDITING | Codex didn't write `**Audit Grade:** [ABCF]` | Check build server stdout |
+| Warzone stuck at a phase | Missing status marker in WarZone.md for that phase | Check marker format against watcher patterns |
 | Claude chat session expired | Session UUID invalid | `claude` → `/exit` → update `CLAUDE_SESSION_ID` |
 | Codex session invalid | Session UUID expired or from wrong machine | `codex exec …` → copy UUID from stdout → update `CODEX_SESSION_ID` |
 | Gemini session invalid | `GEMINI_SESSION_ID` missing or expired | `gemini` → `/exit` → copy UUID from `To resume this session:` line → update `GEMINI_SESSION_ID` |
-| Gemini writes to a `*-Build-Log.md` during chat | `CHAT_DIR` is a directory with `.gemini/` | Point `CHAT_DIR` at `/tmp/argus-chat` |
-| Grade never detected | `<slug>-Build-Feedback.md` pattern mismatch | Verify exact string `**Audit Grade:** A` (case-sensitive) |
+| Gemini writes to Build-Log.md during chat | `CHAT_DIR` is a directory with `.gemini/` | Point `CHAT_DIR` at `/tmp/argus-chat` |
+| Grade never detected | `Build-Feedback.md` pattern mismatch | Verify exact string `**Audit Grade:** A` (case-sensitive) |

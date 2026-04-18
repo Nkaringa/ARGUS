@@ -10,13 +10,11 @@ hermes.db
 hermes.db-journal
 
 # Runtime artifacts emitted by the agents — these belong to each user's runs,
-# not to the repo. They regenerate on every task. Build-History/ holds past tasks.
-*-Plan.md
-*-Build-Log.md
-*-Build-Feedback.md
-*-WarZone.md
-Build-History/
-WarZone-History/
+# not to the repo. They regenerate on every task.
+Plan.md
+Build-Log.md
+Build-Feedback.md
+WarZone.md
 
 # Logs
 *.log

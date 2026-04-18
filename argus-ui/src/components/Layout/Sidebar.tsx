@@ -231,12 +231,6 @@ export function Sidebar({
               current={current}
               onClick={() => onNavigate('logs')}
             />
-            <NavItem
-              label="Archive"
-              section="archive"
-              current={current}
-              onClick={() => onNavigate('archive')}
-            />
           </div>
         </nav>
 

@@ -7,7 +7,7 @@
     "timeout": 300000,
     "completionSignal": {
       "type": "file_append",
-      "file": "*-Build-Log.md",
+      "file": "Build-Log.md",
       "pattern": "### Iteration"
     },
     "suppressStderr": true,
@@ -29,7 +29,7 @@
     "timeout": 240000,
     "completionSignal": {
       "type": "file_content",
-      "file": "*-Plan.md",
+      "file": "Plan.md",
       "pattern": "\\*\\*Plan Status:\\*\\*\\s*READY"
     }
   },
@@ -41,7 +41,7 @@
     "timeout": 240000,
     "completionSignal": {
       "type": "file_append",
-      "file": "*-Build-Feedback.md",
+      "file": "Build-Feedback.md",
       "pattern": "### Iteration"
     }
   },
@@ -75,22 +75,5 @@
     "role": "discuss_audit",
     "command": "codex exec resume {CODEX_SESSION_ID} --full-auto --skip-git-repo-check \"{task}\"",
     "timeout": 180000
-  },
-  "chat_builder": {
-    "name": "Gemini",
-    "model": "gemini",
-    "role": "chat",
-    "command": "gemini --resume {GEMINI_CHAT_SESSION_ID} -p \"{task}\" -y",
-    "timeout": 180000,
-    "suppressStderr": true,
-    "noisePatterns": [
-      "^YOLO mode is enabled",
-      "^\\[ERROR\\] \\[IDEClient\\]",
-      "^MCP issues detected",
-      "^Invalid configuration",
-      "^Please fix the configuration",
-      "^See: https://",
-      "^Error in:"
-    ]
   }
 }

@@ -54,17 +54,4 @@ function getHistory(limit = 20) {
     ).all(limit);
 }
 
-// Mark any task still in RUNNING state as STALE. Run on hermes boot — RUNNING
-// rows that survived a process restart are zombies (the process that owned them
-// is gone), and they pollute getHistory() by appearing as if a task is still in
-// flight. STALE distinguishes them from CANCELLED (user-aborted) and DONE.
-// Idempotent: subsequent calls find no RUNNING rows after the first sweep.
-function sweepStaleRunningTasks() {
-    const result = db.prepare("UPDATE tasks SET status = 'STALE' WHERE status = 'RUNNING'").run();
-    if (result.changes > 0) {
-        console.log(`[db] Marked ${result.changes} stale RUNNING task(s) as STALE on boot`);
-    }
-    return result.changes;
-}
-
-module.exports = { logEvent, createTask, completeTask, getHistory, sweepStaleRunningTasks };
+module.exports = { logEvent, createTask, completeTask, getHistory };

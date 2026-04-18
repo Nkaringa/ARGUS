@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, type KeyboardEvent } from "react";
-import { clsx } from "clsx";
-import type { BuildState, OutputLine } from "../../types";
+import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
+import { clsx } from 'clsx';
+import type { BuildState, OutputLine } from '../../types';
 
 interface BuildViewProps {
   state: BuildState;
@@ -8,12 +8,7 @@ interface BuildViewProps {
   iteration: number;
   grade?: string;
   lines: OutputLine[];
-  droppedLineCount: number;
-  projects: string[];
-  onSubmit: (
-    description: string,
-    opts?: { mode: "new" | "continue"; slug?: string },
-  ) => void;
+  onSubmit: (description: string) => void;
   onApprove: () => void;
   onSkip: () => void;
   onRetry: () => void;
@@ -21,32 +16,24 @@ interface BuildViewProps {
 }
 
 const STATE_LABELS: Record<BuildState, string> = {
-  idle: "Ready",
-  planning: "Planning",
-  building: "Building",
-  auditing: "Auditing",
-  awaiting_approval: "Awaiting Review",
-  paused: "Paused",
-  done: "Complete",
+  idle: 'Ready',
+  planning: 'Planning',
+  building: 'Building',
+  auditing: 'Auditing',
+  awaiting_approval: 'Awaiting Review',
+  paused: 'Paused',
+  done: 'Complete',
 };
 
 function ProgressStrip({ state }: { state: BuildState }) {
   const steps: { key: BuildState | string; label: string }[] = [
-    { key: "planning", label: "Plan" },
-    { key: "building", label: "Build" },
-    { key: "auditing", label: "Audit" },
-    { key: "awaiting_approval", label: "Review" },
-    { key: "done", label: "Done" },
+    { key: 'planning', label: 'Plan' },
+    { key: 'building', label: 'Build' },
+    { key: 'auditing', label: 'Audit' },
+    { key: 'awaiting_approval', label: 'Review' },
+    { key: 'done', label: 'Done' },
   ];
-  const stateOrder = [
-    "idle",
-    "planning",
-    "building",
-    "auditing",
-    "awaiting_approval",
-    "paused",
-    "done",
-  ];
+  const stateOrder = ['idle', 'planning', 'building', 'auditing', 'awaiting_approval', 'paused', 'done'];
   const currentIdx = stateOrder.indexOf(state);
 
   return (
@@ -56,16 +43,14 @@ function ProgressStrip({ state }: { state: BuildState }) {
           const stepIdx = stateOrder.indexOf(step.key as BuildState);
           const done = currentIdx > stepIdx;
           const active =
-            state === step.key ||
-            (state === "paused" && step.key === "building");
+            state === step.key || (state === 'paused' && step.key === 'building');
           return (
             <div
               key={step.key}
               className="flex-1"
               style={{
                 height: done || active ? 2 : 1,
-                background:
-                  done || active ? "var(--color-accent)" : "var(--color-ink-3)",
+                background: done || active ? 'var(--color-accent)' : 'var(--color-ink-3)',
                 marginRight: 2,
               }}
             />
@@ -77,19 +62,17 @@ function ProgressStrip({ state }: { state: BuildState }) {
           const stepIdx = stateOrder.indexOf(step.key as BuildState);
           const done = currentIdx > stepIdx;
           const active =
-            state === step.key ||
-            (state === "paused" && step.key === "building");
+            state === step.key || (state === 'paused' && step.key === 'building');
           return (
             <span
               key={step.key}
               className="flex-1 uppercase"
               style={{
-                fontFamily: "var(--font-mono)",
+                fontFamily: 'var(--font-mono)',
                 fontSize: 11,
                 fontWeight: 500,
-                letterSpacing: "0.15em",
-                color:
-                  done || active ? "var(--color-fg-0)" : "var(--color-fg-2)",
+                letterSpacing: '0.15em',
+                color: done || active ? 'var(--color-fg-0)' : 'var(--color-fg-2)',
               }}
             >
               {step.label}
@@ -101,57 +84,33 @@ function ProgressStrip({ state }: { state: BuildState }) {
   );
 }
 
-function OutputLog({
-  lines,
-  droppedLineCount,
-}: {
-  lines: OutputLine[];
-  droppedLineCount: number;
-}) {
+function OutputLog({ lines }: { lines: OutputLine[] }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [lines]);
-
-  const totalLines = lines.length + droppedLineCount;
 
   return (
     <div
       className="flex-1 overflow-y-auto min-h-0"
       style={{
-        background: "var(--color-ink-2)",
-        color: "var(--color-fg-0)",
-        border: "1px solid var(--color-ink-3)",
+        background: 'var(--color-ink-2)',
+        color: 'var(--color-fg-0)',
+        border: '1px solid var(--color-ink-3)',
         padding: 24,
-        fontFamily: "var(--font-mono)",
+        fontFamily: 'var(--font-mono)',
         fontSize: 13,
         lineHeight: 1.55,
       }}
     >
-      {droppedLineCount > 0 && (
-        <div
-          className="uppercase"
-          style={{
-            color: "#bbbbbb",
-            fontSize: 11,
-            letterSpacing: "0.15em",
-            paddingBottom: 12,
-            marginBottom: 12,
-            borderBottom: "1px solid #3a3a3a",
-          }}
-        >
-          Showing last {lines.length} of {totalLines} lines · {droppedLineCount}{" "}
-          earlier {droppedLineCount === 1 ? "line" : "lines"} dropped from view
-        </div>
-      )}
       {lines.length === 0 ? (
-        <p style={{ color: "var(--color-fg-2)" }}>Output will appear here.</p>
+        <p style={{ color: 'var(--color-fg-2)' }}>Output will appear here.</p>
       ) : (
         lines.map((l, i) => (
           <div key={i}>
-            <span style={{ color: "var(--color-accent)" }}>[{l.agent}]</span>{" "}
-            <span style={{ color: "var(--color-fg-2)" }}>·</span>{" "}
-            <span style={{ color: "var(--color-fg-0)" }}>{l.line}</span>
+            <span style={{ color: 'var(--color-accent)' }}>[{l.agent}]</span>{' '}
+            <span style={{ color: 'var(--color-fg-2)' }}>·</span>{' '}
+            <span style={{ color: 'var(--color-fg-0)' }}>{l.line}</span>
           </div>
         ))
       )}
@@ -166,42 +125,27 @@ export function BuildView({
   iteration,
   grade,
   lines,
-  droppedLineCount,
-  projects,
   onSubmit,
   onApprove,
   onSkip,
   onRetry,
   onAbort,
 }: BuildViewProps) {
-  const [input, setInput] = useState("");
-  // 'new' or an existing project slug to continue. Reset to 'new' whenever the project
-  // list changes (e.g. user manually deleted the folder backing the current selection).
-  const [projectSel, setProjectSel] = useState<string>("new");
-  useEffect(() => {
-    if (projectSel !== "new" && !projects.includes(projectSel)) {
-      setProjectSel("new");
-    }
-  }, [projects, projectSel]);
-  const busy = ["planning", "building", "auditing"].includes(state);
-  const showForm = state === "idle" || state === "done";
-  const showApproval = state === "awaiting_approval";
-  const showPaused = state === "paused";
-  const continueSlug = projectSel === "new" ? null : projectSel;
+  const [input, setInput] = useState('');
+  const busy = ['planning', 'building', 'auditing'].includes(state);
+  const showForm = state === 'idle' || state === 'done';
+  const showApproval = state === 'awaiting_approval';
+  const showPaused = state === 'paused';
 
   const handleSubmit = () => {
     const text = input.trim();
     if (!text) return;
-    if (continueSlug) {
-      onSubmit(text, { mode: "continue", slug: continueSlug });
-    } else {
-      onSubmit(text);
-    }
-    setInput("");
+    onSubmit(text);
+    setInput('');
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
@@ -211,16 +155,16 @@ export function BuildView({
     <div
       className="flex flex-col h-full"
       style={{
-        background: "var(--color-ink-0)",
-        color: "var(--color-fg-0)",
+        background: 'var(--color-ink-0)',
+        color: 'var(--color-fg-0)',
       }}
     >
       {/* Header */}
       <div
         className="shrink-0"
         style={{
-          padding: "40px 60px 28px",
-          borderBottom: "1px solid var(--color-ink-3)",
+          padding: '40px 60px 28px',
+          borderBottom: '1px solid var(--color-ink-3)',
         }}
       >
         <div className="flex items-start justify-between">
@@ -228,11 +172,11 @@ export function BuildView({
             <p
               className="uppercase"
               style={{
-                fontFamily: "var(--font-mono)",
+                fontFamily: 'var(--font-mono)',
                 fontSize: 11,
                 fontWeight: 500,
-                letterSpacing: "0.15em",
-                color: "var(--color-accent)",
+                letterSpacing: '0.15em',
+                color: 'var(--color-accent)',
                 marginBottom: 10,
               }}
             >
@@ -240,13 +184,13 @@ export function BuildView({
             </p>
             <h1
               style={{
-                fontFamily: "var(--font-sans)",
+                fontFamily: 'var(--font-sans)',
                 fontSize: 44,
                 fontWeight: 400,
                 lineHeight: 1.1,
-                letterSpacing: "-0.02em",
+                letterSpacing: '-0.02em',
                 margin: 0,
-                color: "var(--color-fg-0)",
+                color: 'var(--color-fg-0)',
               }}
             >
               Build
@@ -254,7 +198,7 @@ export function BuildView({
             <p
               style={{
                 fontSize: 14,
-                color: "var(--color-fg-1)",
+                color: 'var(--color-fg-1)',
                 marginTop: 8,
               }}
             >
@@ -266,17 +210,17 @@ export function BuildView({
             style={{ gap: 8, paddingTop: 18 }}
           >
             <span
-              className={clsx("uppercase")}
+              className={clsx('uppercase')}
               style={{
-                fontFamily: "var(--font-mono)",
+                fontFamily: 'var(--font-mono)',
                 fontSize: 11,
                 fontWeight: 500,
-                letterSpacing: "0.15em",
+                letterSpacing: '0.15em',
                 color: busy
-                  ? "var(--color-accent)"
-                  : state === "done"
-                    ? "var(--color-fg-0)"
-                    : "var(--color-fg-2)",
+                  ? 'var(--color-accent)'
+                  : state === 'done'
+                    ? 'var(--color-fg-0)'
+                    : 'var(--color-fg-2)',
               }}
             >
               {STATE_LABELS[state]}
@@ -285,10 +229,10 @@ export function BuildView({
               <span
                 className="uppercase"
                 style={{
-                  fontFamily: "var(--font-mono)",
+                  fontFamily: 'var(--font-mono)',
                   fontSize: 11,
-                  color: "var(--color-fg-2)",
-                  letterSpacing: "0.15em",
+                  color: 'var(--color-fg-2)',
+                  letterSpacing: '0.15em',
                 }}
               >
                 Iteration {iteration}
@@ -297,7 +241,7 @@ export function BuildView({
           </div>
         </div>
 
-        {(busy || state === "awaiting_approval" || state === "done") && (
+        {(busy || state === 'awaiting_approval' || state === 'done') && (
           <div style={{ marginTop: 28 }}>
             <ProgressStrip state={state} />
           </div>
@@ -310,9 +254,9 @@ export function BuildView({
               marginTop: 24,
               fontSize: 14,
               fontWeight: 400,
-              color: "var(--color-fg-1)",
+              color: 'var(--color-fg-1)',
               lineHeight: 1.3,
-              fontFamily: "var(--font-mono)",
+              fontFamily: 'var(--font-mono)',
             }}
           >
             › {task}
@@ -323,19 +267,17 @@ export function BuildView({
       {/* Content */}
       <div
         className="flex-1 flex flex-col min-h-0"
-        style={{ padding: "32px 60px", gap: 28 }}
+        style={{ padding: '32px 60px', gap: 28 }}
       >
-        {lines.length > 0 && (
-          <OutputLog lines={lines} droppedLineCount={droppedLineCount} />
-        )}
+        {lines.length > 0 && <OutputLog lines={lines} />}
 
         {/* Approval panel */}
         {showApproval && (
           <div
             className="shrink-0"
             style={{
-              background: "var(--color-ink-1)",
-              border: "1px solid var(--color-ink-3)",
+              background: 'var(--color-ink-1)',
+              border: '1px solid var(--color-ink-3)',
               padding: 28,
             }}
           >
@@ -346,11 +288,11 @@ export function BuildView({
               <h2
                 className="uppercase"
                 style={{
-                  fontFamily: "var(--font-mono)",
+                  fontFamily: 'var(--font-mono)',
                   fontSize: 12,
                   fontWeight: 500,
-                  letterSpacing: "0.15em",
-                  color: "var(--color-fg-1)",
+                  letterSpacing: '0.15em',
+                  color: 'var(--color-fg-1)',
                   margin: 0,
                 }}
               >
@@ -359,15 +301,15 @@ export function BuildView({
               {grade && (
                 <span
                   style={{
-                    fontFamily: "var(--font-sans)",
+                    fontFamily: 'var(--font-sans)',
                     fontSize: 56,
                     fontWeight: 500,
                     lineHeight: 1,
-                    letterSpacing: "-0.03em",
+                    letterSpacing: '-0.03em',
                     color:
-                      grade === "A"
-                        ? "var(--color-accent)"
-                        : "var(--color-fg-0)",
+                      grade === 'A'
+                        ? 'var(--color-accent)'
+                        : 'var(--color-fg-0)',
                   }}
                 >
                   {grade}
@@ -377,7 +319,7 @@ export function BuildView({
             <p
               style={{
                 fontSize: 15,
-                color: "var(--color-fg-1)",
+                color: 'var(--color-fg-1)',
                 lineHeight: 1.5,
                 margin: 0,
                 marginBottom: 24,
@@ -401,19 +343,19 @@ export function BuildView({
           <div
             className="shrink-0"
             style={{
-              background: "var(--color-ink-1)",
-              border: "1px solid var(--color-ink-3)",
+              background: 'var(--color-ink-1)',
+              border: '1px solid var(--color-ink-3)',
               padding: 28,
             }}
           >
             <h2
               className="uppercase"
               style={{
-                fontFamily: "var(--font-mono)",
+                fontFamily: 'var(--font-mono)',
                 fontSize: 12,
                 fontWeight: 500,
-                letterSpacing: "0.15em",
-                color: "var(--color-fg-1)",
+                letterSpacing: '0.15em',
+                color: 'var(--color-fg-1)',
                 margin: 0,
                 marginBottom: 10,
               }}
@@ -423,7 +365,7 @@ export function BuildView({
             <p
               style={{
                 fontSize: 15,
-                color: "var(--color-fg-1)",
+                color: 'var(--color-fg-1)',
                 lineHeight: 1.5,
                 margin: 0,
                 marginBottom: 24,
@@ -441,87 +383,32 @@ export function BuildView({
         {/* Task input */}
         {showForm && (
           <div className="shrink-0">
-            <div style={{ marginBottom: 24 }}>
-              <label
-                className="uppercase"
-                htmlFor="project-selector"
-                style={{
-                  fontSize: 12,
-                  color: "#757575",
-                  letterSpacing: "0.15em",
-                  marginRight: 16,
-                }}
-              >
-                Project
-              </label>
-              <select
-                id="project-selector"
-                value={projectSel}
-                onChange={(e) => setProjectSel(e.target.value)}
-                className="bg-transparent outline-none"
-                style={{
-                  fontFamily: "var(--font-body)",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: "#262626",
-                  letterSpacing: "0.05em",
-                  padding: "8px 0",
-                  borderBottom: "1px solid #262626",
-                  minWidth: 240,
-                }}
-              >
-                <option value="new">New project</option>
-                {projects.map((slug) => (
-                  <option key={slug} value={slug}>
-                    Continue: {slug}
-                  </option>
-                ))}
-              </select>
-              <p
-                style={{
-                  fontSize: 12,
-                  color: "#757575",
-                  marginTop: 8,
-                  lineHeight: 1.3,
-                }}
-              >
-                {continueSlug
-                  ? `New work appends to the existing ${continueSlug}/ folder.`
-                  : "Claude picks a slug and Gemini creates a new <slug>/ folder for the deliverables."}
-              </p>
-            </div>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={
-                continueSlug
-                  ? `What changes do you want to make to ${continueSlug}?`
-                  : "Describe what you want to build..."
-              }
+              placeholder="Describe what you want to build..."
               rows={3}
               className="w-full outline-none resize-none"
               style={{
-                fontFamily: "var(--font-sans)",
+                fontFamily: 'var(--font-sans)',
                 fontSize: 15,
                 fontWeight: 400,
-                color: "var(--color-fg-0)",
+                color: 'var(--color-fg-0)',
                 lineHeight: 1.5,
-                padding: "14px 0 12px",
-                background: "transparent",
-                borderBottom: "1px solid var(--color-ink-3)",
-                borderTop: "none",
-                borderLeft: "none",
-                borderRight: "none",
-                transition: "border-color 150ms ease-out",
+                padding: '14px 0 12px',
+                background: 'transparent',
+                borderBottom: '1px solid var(--color-ink-3)',
+                borderTop: 'none',
+                borderLeft: 'none',
+                borderRight: 'none',
+                transition: 'border-color 150ms ease-out',
               }}
               onFocus={(e) => {
-                e.currentTarget.style.borderBottom =
-                  "2px solid var(--color-accent)";
+                e.currentTarget.style.borderBottom = '2px solid var(--color-accent)';
               }}
               onBlur={(e) => {
-                e.currentTarget.style.borderBottom =
-                  "1px solid var(--color-ink-3)";
+                e.currentTarget.style.borderBottom = '1px solid var(--color-ink-3)';
               }}
             />
             <div
@@ -531,17 +418,17 @@ export function BuildView({
               <p
                 className="uppercase"
                 style={{
-                  fontFamily: "var(--font-mono)",
+                  fontFamily: 'var(--font-mono)',
                   fontSize: 11,
-                  color: "var(--color-fg-2)",
-                  letterSpacing: "0.15em",
+                  color: 'var(--color-fg-2)',
+                  letterSpacing: '0.15em',
                   margin: 0,
                 }}
               >
                 Shift + Enter for new line · Enter to submit
               </p>
               <PrimaryButton onClick={handleSubmit} disabled={!input.trim()}>
-                {continueSlug ? "Continue Build →" : "Start Build →"}
+                Start build →
               </PrimaryButton>
             </div>
           </div>
@@ -568,24 +455,24 @@ function PrimaryButton({
         fontSize: 14,
         fontWeight: 600,
         lineHeight: 1.2,
-        letterSpacing: "0.02em",
-        padding: "12px 22px",
-        background: disabled ? "transparent" : "var(--color-accent)",
-        color: disabled ? "var(--color-fg-2)" : "var(--color-ink-0)",
-        border: `1px solid ${disabled ? "var(--color-ink-3)" : "var(--color-accent)"}`,
-        cursor: disabled ? "not-allowed" : "pointer",
-        transition: "background 150ms ease-out, border-color 150ms ease-out",
+        letterSpacing: '0.02em',
+        padding: '12px 22px',
+        background: disabled ? 'transparent' : 'var(--color-accent)',
+        color: disabled ? 'var(--color-fg-2)' : 'var(--color-ink-0)',
+        border: `1px solid ${disabled ? 'var(--color-ink-3)' : 'var(--color-accent)'}`,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'background 150ms ease-out, border-color 150ms ease-out',
       }}
       onMouseEnter={(e) => {
         if (!disabled) {
-          e.currentTarget.style.background = "var(--color-accent-dim)";
-          e.currentTarget.style.borderColor = "var(--color-accent-dim)";
+          e.currentTarget.style.background = 'var(--color-accent-dim)';
+          e.currentTarget.style.borderColor = 'var(--color-accent-dim)';
         }
       }}
       onMouseLeave={(e) => {
         if (!disabled) {
-          e.currentTarget.style.background = "var(--color-accent)";
-          e.currentTarget.style.borderColor = "var(--color-accent)";
+          e.currentTarget.style.background = 'var(--color-accent)';
+          e.currentTarget.style.borderColor = 'var(--color-accent)';
         }
       }}
     >
@@ -608,21 +495,21 @@ function SecondaryButton({
         fontSize: 14,
         fontWeight: 500,
         lineHeight: 1.2,
-        padding: "12px 0 10px",
-        color: "var(--color-fg-0)",
-        background: "transparent",
-        border: "none",
-        borderBottom: "1px solid var(--color-fg-0)",
-        cursor: "pointer",
-        transition: "color 150ms ease-out, border-color 150ms ease-out",
+        padding: '12px 0 10px',
+        color: 'var(--color-fg-0)',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: '1px solid var(--color-fg-0)',
+        cursor: 'pointer',
+        transition: 'color 150ms ease-out, border-color 150ms ease-out',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.color = "var(--color-accent)";
-        e.currentTarget.style.borderColor = "var(--color-accent)";
+        e.currentTarget.style.color = 'var(--color-accent)';
+        e.currentTarget.style.borderColor = 'var(--color-accent)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.color = "var(--color-fg-0)";
-        e.currentTarget.style.borderColor = "var(--color-fg-0)";
+        e.currentTarget.style.color = 'var(--color-fg-0)';
+        e.currentTarget.style.borderColor = 'var(--color-fg-0)';
       }}
     >
       {children}
@@ -645,19 +532,19 @@ function GhostButton({
         fontSize: 12,
         fontWeight: 500,
         lineHeight: 1.2,
-        letterSpacing: "0.15em",
-        fontFamily: "var(--font-mono)",
-        padding: "10px 0 8px",
-        color: "var(--color-danger)",
-        background: "transparent",
-        border: "none",
-        borderBottom: "1px solid var(--color-danger)",
-        cursor: "pointer",
+        letterSpacing: '0.15em',
+        fontFamily: 'var(--font-mono)',
+        padding: '10px 0 8px',
+        color: 'var(--color-danger)',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: '1px solid var(--color-danger)',
+        cursor: 'pointer',
         opacity: 0.8,
-        transition: "opacity 150ms ease-out",
+        transition: 'opacity 150ms ease-out',
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-      onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.8")}
+      onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+      onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.8')}
     >
       {children}
     </button>
