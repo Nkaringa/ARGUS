@@ -8,8 +8,10 @@ const path = require('path');
 const { connectNATS, subscribe } = require('../core/events');
 const { startWatcher } = require('../core/watcher');
 const { startWorkflow, submitTask, sendApproval, getState, setBroadcast } = require('../workflows/build');
-const { getHistory } = require('../core/db');
+const { getHistory, sweepStaleRunningTasks } = require('../core/db');
 const { corsMiddleware, authMiddleware, wsAuth } = require('../core/auth');
+const { ensureRoleDocs } = require('../core/role-docs');
+const { listProjectFolders, listBuildHistory, readBuildHistory } = require('../core/archive');
 
 const PORT = process.env.BUILD_PORT || 3002;
 const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
@@ -47,17 +49,50 @@ wss.on('connection', (ws, req) => {
 });
 
 app.post('/task', (req, res) => {
-    const { description } = req.body;
+    const { description, mode, slug } = req.body;
     if (!description || !description.trim()) {
         return res.status(400).json({ error: 'description required' });
     }
+    const submitMode = mode === 'continue' ? 'continue' : 'new';
+    if (submitMode === 'continue') {
+        if (!slug || typeof slug !== 'string' || !slug.trim()) {
+            return res.status(400).json({ error: 'continue mode requires a slug' });
+        }
+    }
     try {
         logBuffer.length = 0;
-        submitTask(description.trim());
+        submitTask(description.trim(), {
+            mode: submitMode,
+            slug: submitMode === 'continue' ? slug.trim() : undefined,
+        });
         res.json({ ok: true });
     } catch (err) {
-        res.status(409).json({ error: err.message });
+        // Workflow throws "A task is already running" (conflict) and "project folder not
+        // found" (bad request). 400 fits the latter; 409 fits the former. Pick by message.
+        const status = /not found|requires/.test(err.message) ? 400 : 409;
+        res.status(status).json({ error: err.message });
     }
+});
+
+// GET /projects — list <slug>/ deliverable folders in WORK_DIR so the Build UI can
+// offer "Continue: <slug>" options. Filters out system folders and dotfiles.
+app.get('/projects', (req, res) => {
+    res.json({ projects: listProjectFolders() });
+});
+
+// GET /history/builds — list archived build folders (newest first) for the Archive viewer.
+app.get('/history/builds', (req, res) => {
+    res.json({ builds: listBuildHistory() });
+});
+
+// GET /history/builds/:slug — read all three meta files for one archived build.
+// Returns 404 if the slug folder doesn't exist or fails the safe-slug regex.
+app.get('/history/builds/:slug', (req, res) => {
+    const data = readBuildHistory(req.params.slug);
+    if (!data) {
+        return res.status(404).json({ error: 'archive not found' });
+    }
+    res.json(data);
 });
 
 app.post('/approval', (req, res) => {
@@ -85,6 +120,11 @@ app.get('/history', (req, res) => {
 });
 
 (async () => {
+    ensureRoleDocs();
+    // Mark any tasks still RUNNING from a prior crash/restart as STALE. Build server
+    // is the canonical owner of the tasks table — sweeping here (not in chat/warzone
+    // boot) keeps the responsibility scoped to the process that creates tasks.
+    sweepStaleRunningTasks();
     await connectNATS();
 
     subscribe('build.output', (payload) => {
@@ -94,7 +134,9 @@ app.get('/history', (req, res) => {
         broadcast({ type: 'output', ...entry });
     });
 
-    subscribe('agent.started', (payload) => {
+    // Topic-scoped: only build-pipeline starts reach this subscriber. Warzone and chat
+    // publish to their own <pipeline>.agent.started topics so they don't cross-contaminate.
+    subscribe('build.agent.started', (payload) => {
         broadcast({ type: 'state', ...getState(), agentStarted: payload });
     });
 

@@ -24,7 +24,7 @@ See [workflow.md](../workflow.md) for the end-to-end pipeline walkthrough.
 
 ## How to Start
 
-Argus is an npm workspace project. Install once at the repo root, then run.
+For full first-time setup (prerequisites, project folder, session seeding, etc.) see **[SETUP.md](../SETUP.md)** at the repo root. Quick commands once you're already set up:
 
 ```bash
 # From the repo root (one-time install covers hermes + argus-ui as workspaces)
@@ -53,9 +53,10 @@ hermes/
 │   ├── events.js           NATS pub/sub (connect, publish, subscribe)
 │   ├── agents.js           Agent runner (buildCommand, runAgent)
 │   ├── agents.json         Command templates for 6 agent keys
+│   ├── archive.js          Build-History move on each submitTask + parseTaskFile helper
 │   ├── auth.js             Shared-secret auth + CORS
 │   ├── db.js               SQLite (logEvent, createTask, completeTask, getHistory)
-│   └── watcher.js          File watcher (Plan.md, Build-Log.md, Build-Feedback.md, WarZone.md)
+│   └── watcher.js          File watcher (*-Plan.md, *-Build-Log.md, *-Build-Feedback.md, *-WarZone.md)
 │
 ├── workflows/              ← XState state machines
 │   ├── build.js            idle → planning → building → auditing → awaiting_approval → …
@@ -176,14 +177,21 @@ Claude goes first — framing the idea is a planning task.
 
 | File | Owner | Signal pattern | Type | NATS topic |
 |---|---|---|---|---|
-| `Plan.md` | Claude | `**Plan Status:** READY` | `file_content` (edge-triggered, Plan.md is overwritten) | `plan.completed` |
-| `Build-Log.md` | Gemini | new `### Iteration N` | `file_append` (delta scan) | `agent.completed` |
-| `Build-Feedback.md` | Codex | `**Audit Grade:** [ABCF]` | `file_append` | `grade.received` |
-| `WarZone.md` | all three | `**Planner Status:** DONE` | `file_append` | `discuss.claude_done` |
-| `WarZone.md` | all three | `**Builder Status:** DONE` | `file_append` | `discuss.gemini_done` |
-| `WarZone.md` | all three | `**Auditor Status:** READY TO BUILD` | `file_append` | `discuss.complete` |
+| `<slug>-Plan.md` | Claude | `**Plan Status:** READY` | `file_content` (slug picked by Claude on new, fixed by UI on continue) | `plan.completed` (payload includes `file`) |
+| `<slug>-Build-Log.md` | Gemini | new `### Iteration N` | `file_append` (delta scan) | `agent.completed` |
+| `<slug>-Build-Feedback.md` | Codex | `**Audit Grade:** [ABCF]` | `file_append` | `grade.received` |
+| `<slug>/` | Gemini | (not watched) | — | deliverable folder; persists across iterations and continuations |
+| `<slug>-WarZone.md` | all three | `**Planner Status:** DONE` | `file_append` | `discuss.claude_done` (payload includes `file`) |
+| `<slug>-WarZone.md` | all three | `**Builder Status:** DONE` | `file_append` | `discuss.gemini_done` |
+| `<slug>-WarZone.md` | all three | `**Auditor Status:** READY TO BUILD` | `file_append` | `discuss.complete` |
 
-Append-only files use delta scanning (only newly written bytes are checked). `Plan.md` is deleted by `submitTask()` before every new build — so the watcher's "content changed + pattern matches" check unambiguously identifies each new plan (no edge-trigger boolean state across task boundaries).
+The watcher uses glob patterns (`*-Plan.md`, `*-Build-Log.md`, `*-Build-Feedback.md`, `*-WarZone.md`) at the project root only — `Build-History/` and `WarZone-History/` are not watched. Append-only files use delta scanning (only newly written bytes are checked).
+
+**Build archival.** `archiveLiveFiles()` runs at three points: the `onDone` action (when a task completes — grade A or skip), the `sendApproval('abort')` path, and as a safety net at the start of `submitTask()` (covers files stranded by a crash or manual restart). It moves any matching `<slug>-*.md` into `Build-History/<slug>/{Plan.md, Build-Log.md, Build-Feedback.md}` (slug prefix dropped). On slug collision the destination folder is suffixed with an ISO timestamp. Idempotent — re-running it is a no-op when nothing matches. **Deliverable folders (`<slug>/`) are NOT archived** — they persist in WORK_DIR so users can continue iterating on them via the Build tab's "Project" dropdown.
+
+**New vs continue mode.** `submitTask(description, opts)` accepts `{ mode: 'new' | 'continue', slug? }`. In `'new'` mode Claude picks the slug as part of planning; in `'continue'` mode the UI passes a slug from the dropdown, Hermes pre-sets `currentSlug`, and the planner prompt instructs Claude to use that slug verbatim. The `plan.completed` handler enforces the constraint in continue mode — a filename whose slug differs from `currentSlug` triggers `PLAN_FAILED` instead of silently fragmenting the project. The Build UI offers continue mode via `GET /projects` (returns the list of `<slug>/` folders in WORK_DIR, excluding system folders).
+
+**Warzone archival.** A discussion can span multiple submits on the same topic — they all append to the same `<slug>-WarZone.md`. Clicking **New Discussion** in the UI calls `newDiscussion()`, which `archiveWarzoneFile(slug)` moves into `WarZone-History/<slug>/WarZone.md` and clears the in-memory slug. On hermes boot the workflow scans `WORK_DIR` for any `*-WarZone.md` and resumes the slug from disk, so a mid-discussion restart is recoverable.
 
 ---
 
@@ -194,13 +202,13 @@ Append-only files use delta scanning (only newly written bytes are checked). `Pl
 | `agent.output` | agents.js stdout/stderr | build + warzone servers → UI |
 | `chat.output` | agents.js (chat server's runAgent) | chat server → UI |
 | `agent.started` | agents.js | build + warzone servers → UI |
-| `plan.completed` | watcher.js (Plan.md) | build workflow |
-| `agent.completed` | watcher.js (Build-Log.md) | build workflow |
+| `plan.completed` | watcher.js (`*-Plan.md`) | build workflow (extracts slug from `payload.file`) |
+| `agent.completed` | watcher.js (`*-Build-Log.md`) | build workflow |
 | `agent.failed` | workflow | build workflow |
-| `grade.received` | watcher.js (Build-Feedback.md) | build workflow |
-| `discuss.claude_done` | watcher.js (WarZone.md) | warzone workflow |
-| `discuss.gemini_done` | watcher.js (WarZone.md) | warzone workflow |
-| `discuss.complete` | watcher.js (WarZone.md) | warzone workflow |
+| `grade.received` | watcher.js (`*-Build-Feedback.md`) | build workflow |
+| `discuss.claude_done` | watcher.js (`*-WarZone.md`) | warzone workflow (extracts slug from `payload.file` on first round) |
+| `discuss.gemini_done` | watcher.js (`*-WarZone.md`) | warzone workflow |
+| `discuss.complete` | watcher.js (`*-WarZone.md`) | warzone workflow |
 
 ---
 
@@ -221,8 +229,8 @@ Two SQLite tables:
 | Claude session expired / invalid UUID | `claude` in terminal → `/exit` → update `CLAUDE_SESSION_ID` in `.env`. |
 | Gemini session expired / invalid UUID | `gemini` in terminal → `/exit` → copy UUID from `To resume this session:` line → update `GEMINI_SESSION_ID`. |
 | Codex session expired | `codex exec --full-auto --skip-git-repo-check -C "$WORK_DIR" "hello"` → copy UUID from stdout → update `CODEX_SESSION_ID`. |
-| Stuck in `planning` | Plan.md missing `**Plan Status:** READY` — check build server stdout. |
-| Stuck in `building` | Build-Log.md missing new `### Iteration` entry — check build server stdout. |
-| Stuck in `auditing` | Build-Feedback.md missing `**Audit Grade:** [ABCF]` (case-sensitive, exact format). |
-| Warzone stuck at a phase | WarZone.md missing the expected status marker for that phase. |
-| Gemini writes to Build-Log.md during chat | `CHAT_DIR` points at a directory containing `.gemini/`. Use `/tmp/argus-chat`. |
+| Stuck in `planning` | No `*-Plan.md` ending with `**Plan Status:** READY` — Claude either dropped the slug prefix (`Plan.md` alone won't match the watcher glob) or omitted the READY marker. Check build server stdout. |
+| Stuck in `building` | `<slug>-Build-Log.md` missing new `### Iteration` entry — check build server stdout. |
+| Stuck in `auditing` | `<slug>-Build-Feedback.md` missing `**Audit Grade:** [ABCF]` (case-sensitive, exact format). |
+| Warzone stuck at a phase | The current `<slug>-WarZone.md` is missing the expected status marker for that phase. |
+| Gemini writes to a `*-Build-Log.md` during chat | `CHAT_DIR` points at a directory containing `.gemini/`. Use `/tmp/argus-chat`. |
