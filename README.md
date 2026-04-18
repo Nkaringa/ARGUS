@@ -95,11 +95,11 @@ idle → planning → building → auditing → awaiting_approval → (loop | do
       (Claude)   (Gemini)   (Codex)
 ```
 
-| Stage | Agent | Output |
-|---|---|---|
+| Stage      | Agent  | Output                                                                                          |
+| ---------- | ------ | ----------------------------------------------------------------------------------------------- |
 | `planning` | Claude | `<slug>-Plan.md` (slug chosen by Claude on a new project, or fixed by the UI on a continuation) |
-| `building` | Gemini | `<slug>-Build-Log.md` (append-only within the task) + deliverables under `<slug>/` |
-| `auditing` | Codex | `<slug>-Build-Feedback.md` (grade A/B/C/F per audit) |
+| `building` | Gemini | `<slug>-Build-Log.md` (append-only within the task) + deliverables under `<slug>/`              |
+| `auditing` | Codex  | `<slug>-Build-Feedback.md` (grade A/B/C/F per audit)                                            |
 
 On **grade A** the task is marked done. On **B/C/F** the user approves in the UI and Gemini rebuilds from the same `<slug>-Plan.md` using Codex's feedback. Retry depth is capped — on repeated failure the pipeline pauses for human review. As soon as the task completes (grade A, skip, or abort), the three meta files move into `Build-History/<slug>/{Plan.md, Build-Log.md, Build-Feedback.md}` (slug prefix dropped). The `<slug>/` deliverable folder stays in place — re-select it from the Build tab's "Project" dropdown to continue iterating on the same project.
 
@@ -121,13 +121,13 @@ Three tabs: Gemini, Claude, Codex. Each speaks to its own persistent session. No
 
 Hermes uses file writes as state-transition signals. A chokidar watcher publishes NATS events when specific patterns appear.
 
-| File | Owner | Signal pattern | NATS event |
-|---|---|---|---|
-| `<slug>-Plan.md` | Claude | `**Plan Status:** READY` | `plan.completed` |
-| `<slug>-Build-Log.md` | Gemini | new `### Iteration N` entry | `agent.completed` |
-| `<slug>-Build-Feedback.md` | Codex | `**Audit Grade:** [ABCF]` | `grade.received` |
-| `<slug>/` | Gemini | (not watched) | — deliverable folder per project |
-| `<slug>-WarZone.md` | All three | `**Planner Status:** DONE` → `**Builder Status:** DONE` → `**Auditor Status:** READY TO BUILD` | `discuss.claude_done` → `discuss.gemini_done` → `discuss.complete` |
+| File                       | Owner     | Signal pattern                                                                                 | NATS event                                                         |
+| -------------------------- | --------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `<slug>-Plan.md`           | Claude    | `**Plan Status:** READY`                                                                       | `plan.completed`                                                   |
+| `<slug>-Build-Log.md`      | Gemini    | new `### Iteration N` entry                                                                    | `agent.completed`                                                  |
+| `<slug>-Build-Feedback.md` | Codex     | `**Audit Grade:** [ABCF]`                                                                      | `grade.received`                                                   |
+| `<slug>/`                  | Gemini    | (not watched)                                                                                  | — deliverable folder per project                                   |
+| `<slug>-WarZone.md`        | All three | `**Planner Status:** DONE` → `**Builder Status:** DONE` → `**Auditor Status:** READY TO BUILD` | `discuss.claude_done` → `discuss.gemini_done` → `discuss.complete` |
 
 The watcher uses globs (`*-Plan.md`, `*-Build-Log.md`, `*-Build-Feedback.md`) at the project root — deliverable subfolders, `Build-History/`, and `WarZone-History/` are not watched. Each task's three meta files move into `Build-History/<slug>/` the moment the task completes (or is aborted); `submitTask` re-runs the same archival as a safety net to catch any stale files left behind by a crash. Deliverables stay in their `<slug>/` folder; the user can iterate on them by selecting **Continue: \<slug\>** in the Build tab.
 

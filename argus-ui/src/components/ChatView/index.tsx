@@ -8,31 +8,44 @@ interface ChatViewProps {
   onSend: (agent: AgentKey, prompt: string) => void;
 }
 
-function MessageBlock({ message, agentLabel }: { message: ChatMessage; agentLabel: string }) {
+function MessageBlock({
+  message,
+  agentLabel,
+}: {
+  message: ChatMessage;
+  agentLabel: string;
+}) {
   const isUser = message.role === 'user';
-  const author = isUser ? 'You' : agentLabel;
+  const author = isUser ? 'you' : agentLabel.toLowerCase();
   return (
-    <div style={{ padding: '24px 0', borderBottom: '1px solid #bbbbbb' }}>
+    <div
+      style={{
+        padding: '20px 0',
+        borderBottom: '1px solid var(--color-ink-3)',
+      }}
+    >
       <p
         className="uppercase"
         style={{
-          fontFamily: 'var(--font-body)',
-          fontSize: 14,
-          fontWeight: 900,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11,
+          fontWeight: 500,
           letterSpacing: '0.15em',
-          color: isUser ? '#757575' : '#262626',
+          color: isUser ? 'var(--color-fg-2)' : 'var(--color-accent)',
+          margin: 0,
           marginBottom: 8,
         }}
       >
-        {author}
+        [{author}]
       </p>
       <p
         className="whitespace-pre-wrap break-words"
         style={{
-          fontSize: 16,
+          fontSize: 15,
           fontWeight: 400,
-          lineHeight: 1.3,
-          color: '#262626',
+          lineHeight: 1.55,
+          color: 'var(--color-fg-0)',
+          margin: 0,
         }}
       >
         {message.text}
@@ -64,104 +77,186 @@ export function ChatView({ agent, agentLabel, messages, onSend }: ChatViewProps)
   };
 
   return (
-    <div className="flex flex-col h-full bg-white text-[#262626]">
+    <div
+      className="flex flex-col h-full"
+      style={{
+        background: 'var(--color-ink-0)',
+        color: 'var(--color-fg-0)',
+      }}
+    >
       {/* Header */}
-      <div className="shrink-0" style={{ padding: '48px 60px 32px', borderBottom: '1px solid #bbbbbb' }}>
-        <h1
+      <div
+        className="shrink-0"
+        style={{
+          padding: '40px 60px 28px',
+          borderBottom: '1px solid var(--color-ink-3)',
+        }}
+      >
+        <p
           className="uppercase"
           style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 60,
-            fontWeight: 300,
-            lineHeight: 1.3,
-            letterSpacing: '0.02em',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: '0.15em',
+            color: 'var(--color-accent)',
+            marginBottom: 10,
           }}
         >
-          Chat — {agentLabel}
+          Chat · {agentLabel.toLowerCase()}
+        </p>
+        <h1
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: 44,
+            fontWeight: 400,
+            lineHeight: 1.1,
+            letterSpacing: '-0.02em',
+            margin: 0,
+            color: 'var(--color-fg-0)',
+          }}
+        >
+          {agentLabel}
         </h1>
-        <p style={{ fontSize: 14, fontWeight: 400, color: '#757575', marginTop: 8 }}>
-          Direct conversation — no pipeline
+        <p
+          style={{
+            fontSize: 14,
+            fontWeight: 400,
+            color: 'var(--color-fg-1)',
+            marginTop: 8,
+          }}
+        >
+          Direct conversation — no pipeline.
         </p>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: '0 60px' }}>
+      <div
+        className="flex-1 overflow-y-auto"
+        style={{ padding: '0 60px' }}
+      >
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center" style={{ gap: 16 }}>
+          <div
+            className="flex flex-col items-center justify-center h-full text-center"
+            style={{ gap: 12 }}
+          >
             <p
-              className="uppercase"
               style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 32,
-                fontWeight: 300,
-                letterSpacing: '0.02em',
-                color: '#262626',
+                fontFamily: 'var(--font-sans)',
+                fontSize: 20,
+                fontWeight: 400,
+                color: 'var(--color-fg-1)',
+                margin: 0,
               }}
             >
-              Start a conversation with {agentLabel}
+              Start a conversation with {agentLabel}.
             </p>
             <p
               className="uppercase"
-              style={{ fontSize: 12, color: '#757575', letterSpacing: '0.15em' }}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                color: 'var(--color-fg-2)',
+                letterSpacing: '0.15em',
+                margin: 0,
+              }}
             >
               Shift + Enter for new line · Enter to send
             </p>
           </div>
         ) : (
-          messages.map((msg, i) => <MessageBlock key={i} message={msg} agentLabel={agentLabel} />)
+          messages.map((msg, i) => (
+            <MessageBlock key={i} message={msg} agentLabel={agentLabel} />
+          ))
         )}
         <div ref={bottomRef} />
       </div>
 
       {/* Input */}
-      <div className="shrink-0" style={{ padding: '24px 60px 40px', borderTop: '1px solid #bbbbbb' }}>
+      <div
+        className="shrink-0"
+        style={{
+          padding: '24px 60px 32px',
+          borderTop: '1px solid var(--color-ink-3)',
+        }}
+      >
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={`Message ${agentLabel}...`}
           rows={1}
-          className="w-full bg-transparent outline-none resize-none"
+          className="w-full outline-none resize-none"
           style={{
-            fontFamily: 'var(--font-body)',
-            fontSize: 16,
+            fontFamily: 'var(--font-sans)',
+            fontSize: 15,
             fontWeight: 400,
-            color: '#262626',
-            lineHeight: 1.3,
-            padding: '12px 0',
-            borderBottom: '1px solid #262626',
-            minHeight: 48,
+            color: 'var(--color-fg-0)',
+            lineHeight: 1.55,
+            padding: '10px 0',
+            background: 'transparent',
+            borderBottom: '1px solid var(--color-ink-3)',
+            borderTop: 'none',
+            borderLeft: 'none',
+            borderRight: 'none',
+            minHeight: 44,
             maxHeight: 160,
+            transition: 'border-color 150ms ease-out',
           }}
           onInput={(e) => {
             const t = e.currentTarget;
             t.style.height = 'auto';
             t.style.height = `${Math.min(t.scrollHeight, 160)}px`;
           }}
-          onFocus={(e) => (e.currentTarget.style.borderBottom = '2px solid #1c69d4')}
-          onBlur={(e) => (e.currentTarget.style.borderBottom = '1px solid #262626')}
+          onFocus={(e) => {
+            e.currentTarget.style.borderBottom = '2px solid var(--color-accent)';
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderBottom = '1px solid var(--color-ink-3)';
+          }}
         />
-        <div className="flex items-center justify-between" style={{ marginTop: 16 }}>
+        <div
+          className="flex items-center justify-between"
+          style={{ marginTop: 14 }}
+        >
           <p
             className="uppercase"
-            style={{ fontSize: 12, color: '#757575', letterSpacing: '0.15em' }}
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--color-fg-2)',
+              letterSpacing: '0.15em',
+              margin: 0,
+            }}
           >
             Shift + Enter for new line
           </p>
           <button
             onClick={handleSend}
             disabled={!input.trim()}
-            className={
-              !input.trim()
-                ? 'uppercase border border-[#bbbbbb] text-[#bbbbbb] cursor-not-allowed'
-                : 'uppercase bg-[#1c69d4] text-white border border-[#1c69d4] hover:bg-[#0653b6] hover:border-[#0653b6] transition-colors'
-            }
             style={{
-              fontSize: 16,
-              fontWeight: 700,
+              fontSize: 14,
+              fontWeight: 600,
               lineHeight: 1.2,
-              letterSpacing: '0.05em',
-              padding: '12px 24px',
+              letterSpacing: '0.02em',
+              padding: '10px 20px',
+              background: !input.trim() ? 'transparent' : 'var(--color-accent)',
+              color: !input.trim() ? 'var(--color-fg-2)' : 'var(--color-ink-0)',
+              border: `1px solid ${!input.trim() ? 'var(--color-ink-3)' : 'var(--color-accent)'}`,
+              cursor: !input.trim() ? 'not-allowed' : 'pointer',
+              transition: 'background 150ms ease-out, border-color 150ms ease-out',
+            }}
+            onMouseEnter={(e) => {
+              if (input.trim()) {
+                e.currentTarget.style.background = 'var(--color-accent-dim)';
+                e.currentTarget.style.borderColor = 'var(--color-accent-dim)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (input.trim()) {
+                e.currentTarget.style.background = 'var(--color-accent)';
+                e.currentTarget.style.borderColor = 'var(--color-accent)';
+              }
             }}
           >
             Send →
