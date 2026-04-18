@@ -8,11 +8,17 @@ export function useChatSocket() {
   const [codexMessages, setCodexMessages] = useState<ChatMessage[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const connectRef = useRef<() => void>(() => {});
+  // Exponential backoff for reconnect — see useBuildSocket for rationale.
+  const reconnectAttemptsRef = useRef(0);
 
   const connect = useCallback(() => {
     const ws = new WebSocket(wsUrl(SERVERS.chat.ws));
     wsRef.current = ws;
     let closed = false;
+
+    ws.onopen = () => {
+      reconnectAttemptsRef.current = 0;
+    };
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
@@ -37,7 +43,10 @@ export function useChatSocket() {
     };
 
     ws.onclose = () => {
-      if (!closed) setTimeout(() => connectRef.current(), 2000);
+      if (closed) return;
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+      reconnectAttemptsRef.current++;
+      setTimeout(() => connectRef.current(), delay);
     };
 
     return () => {

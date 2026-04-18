@@ -6,151 +6,19 @@ The goal: turn raw LLM outputs into production-ready code by enforcing a plannin
 
 ![Argus three-agent orchestration architecture](Images/architecture.webp)
 
+> **→ Ready to install? See [SETUP.md](SETUP.md).**
+
 ---
 
 ## Why Argus
 
 Each LLM is strong at something different. Rather than pick one and live with its weaknesses, Argus runs a pipeline where each agent does what it's best at:
 
-- **Claude plans** — turns a task into a concrete `Plan.md` (files to touch, approach, gotchas, verification).
-- **Gemini builds** — implements the plan across the workspace, logging each iteration to `Build-Log.md`.
-- **Codex audits** — reviews the implementation against the plan, grades it A / B / C / F in `Build-Feedback.md`, and lists specific revision instructions on anything less than A.
+- **Claude plans** — picks a kebab-case slug for the task (e.g. `landing-page`) and turns the task into a concrete `<slug>-Plan.md` (files to touch, approach, gotchas, verification).
+- **Gemini builds** — implements the plan across the workspace, logging each iteration to `<slug>-Build-Log.md`.
+- **Codex audits** — reviews the implementation against the plan, grades it A / B / C / F in `<slug>-Build-Feedback.md`, and lists specific revision instructions on anything less than A.
 
-On a non-A grade, you approve in the UI and Gemini revises from the same plan using Codex's feedback. Plans are frozen across iterations — revisions are implementation fixes, not plan rewrites. When Codex gives an A, the task is done.
-
----
-
-## Quick Start
-
-### Prerequisites
-
-Argus works on **macOS, Linux, and Windows**. The requirements below are the same everywhere — only the installer differs per OS.
-
-- **Node.js ≥ 20** — check with `node --version`
-  - Any install method works (nodejs.org installer, `nvm`, `fnm`, `volta`, `brew install node`, `apt install nodejs`, `winget install OpenJS.NodeJS`, etc.)
-- **`nats-server`** in PATH — check with `nats-server --version`
-
-  | OS | Install |
-  |---|---|
-  | macOS | `brew install nats-server` |
-  | Linux (Debian/Ubuntu) | Download the binary from [nats.io/download](https://nats.io/download/) and drop it in `/usr/local/bin` |
-  | Linux (via Go) | `go install github.com/nats-io/nats-server/v2@latest` |
-  | Windows | `scoop install nats-server` or `choco install nats-server` or binary from [nats.io/download](https://nats.io/download/) |
-  | Any OS (Docker) | `docker run -p 4222:4222 nats:latest` |
-
-- **Three agent CLIs**, each installed and authenticated with your own subscription (all three are cross-platform via npm):
-  - `claude` — [Claude Code](https://docs.claude.com/claude-code)
-  - `gemini` — [Gemini CLI](https://github.com/google-gemini/gemini-cli)
-  - `codex` — [Codex CLI](https://github.com/openai/codex)
-
-Argus never bundles or proxies the agents. You use your own accounts.
-
-> **Windows note:** the root `npm run dev` script uses shell quoting that works in POSIX shells (macOS zsh/bash, Linux bash). On Windows, run the four processes in separate terminals using the individual scripts (`npm run dev:chat`, `npm run dev:build`, `npm run dev:warzone`, `npm run dev:ui`), or use WSL.
-
-### Install
-
-```bash
-git clone <your-fork-url> argus
-cd argus
-npm install
-```
-
-A single `npm install` at the root installs all dependencies. Argus uses npm workspaces — `hermes` and `argus-ui` are workspaces of the root package, and dependencies are hoisted into a single `node_modules/`.
-
-### Configure `hermes/.env`
-
-Copy the template and fill in the three session UUIDs (see below):
-
-```bash
-cp hermes/.env.example hermes/.env
-```
-
-Minimum required fields:
-
-```env
-WORK_DIR=/absolute/path/to/your/argus/clone
-CLAUDE_SESSION_ID=<uuid>
-GEMINI_SESSION_ID=<uuid>
-CODEX_SESSION_ID=<uuid>
-```
-
-### Seeding the three session UUIDs
-
-All three agents are always invoked with `--resume <UUID>`. Hermes **never creates a session on its own** — you seed each UUID manually. This means sessions persist across restarts, across task boundaries, and can be rotated explicitly when you want a fresh context.
-
-| Agent | How to seed |
-|---|---|
-| **Claude** | `cd $WORK_DIR && claude` → send one message → `/exit` → copy the UUID from the "resume this session" hint. Paste as `CLAUDE_SESSION_ID`. |
-| **Gemini** | `cd $WORK_DIR && gemini` → send one message → `/exit` → the last stdout line prints `To resume this session: gemini --resume <UUID>`. Paste the UUID as `GEMINI_SESSION_ID`. |
-| **Codex** | `cd $WORK_DIR && codex exec --full-auto --skip-git-repo-check "hello"` → the UUID is printed in the stdout header as `session id: <UUID>`. Paste as `CODEX_SESSION_ID`. |
-
-To **rotate** any session later, re-run the same procedure and paste the new UUID, then restart Hermes.
-
-### Run
-
-```bash
-# From the repo root
-nats-server &                  # or: brew services start nats-server
-npm run dev
-```
-
-`npm run dev` uses `concurrently` to start all four processes in one terminal:
-
-| Process | Port | Purpose |
-|---|---|---|
-| `chat` | 3001 | Direct per-agent chat |
-| `build` | 3002 | Three-agent build pipeline |
-| `warzone` | 3003 | Three-phase pre-build discussion |
-| `ui` | 5173 | Argus React UI (Vite dev server) |
-
-Open **http://localhost:5173**.
-
----
-
-## Repository Layout
-
-```
-argus/
-├── Images/
-│   └── architecture.webp     Diagram used in this README
-│
-├── argus-ui/                  React 19 + Vite + TailwindCSS 4
-│   ├── src/
-│   │   ├── components/        Build / Warzone / Chat / Logs views
-│   │   ├── hooks/             WebSocket hooks per server
-│   │   └── ...
-│   └── README.md              UI-specific docs
-│
-├── hermes/                    Node.js orchestration engine
-│   ├── core/                  NATS, agents, SQLite, file watcher
-│   ├── workflows/             XState machines (build, warzone)
-│   ├── servers/               Express + WebSocket servers (chat/build/warzone)
-│   ├── .env.example           Template — copy to hermes/.env and seed UUIDs
-│   └── HERMES.md              Engine reference
-│
-├── .claude/CLAUDE.md          Planner role specification
-├── .gemini/GEMINI.md          Builder role specification
-├── .codex/CODEX.md            Auditor role specification
-│
-├── package.json               Root — workspaces + dev script
-├── README.md                  This file
-└── workflow.md                End-to-end pipeline walkthrough
-```
-
-> **Note:** the `landing/` folder (Argus marketing site) lives in a **separate repository** and is git-ignored here.
-
-### Runtime files (never committed)
-
-During a build, Hermes and the agents generate four files at `WORK_DIR`:
-
-| File | Owner | Purpose |
-|---|---|---|
-| `Plan.md` | Claude | Plan for the current task — **overwritten per task** |
-| `Build-Log.md` | Gemini | Iteration log — **append-only** |
-| `Build-Feedback.md` | Codex | Audit reports with grades — **append-only** |
-| `WarZone.md` | All three | Three-phase discussion log — **append-only** |
-
-These are git-ignored. They regenerate on every run and contain run-specific content.
+On a non-A grade, you approve in the UI and Gemini revises from the same plan using Codex's feedback. Plans are frozen across iterations — revisions are implementation fixes, not plan rewrites. When Codex gives an A, the task is done. When you submit the next task, the previous task's three files move into `Build-History/<slug>/` so the live workspace always holds exactly one task.
 
 ---
 
@@ -185,6 +53,39 @@ See the full diagram at the top of this README, and [workflow.md](workflow.md) f
 
 ---
 
+## Repository Layout
+
+```
+argus/
+├── Images/
+│   └── architecture.webp     Diagram used in this README
+│
+├── argus-ui/                  React 19 + Vite + TailwindCSS 4
+│   ├── src/
+│   │   ├── components/        Build / Warzone / Chat / Logs views
+│   │   ├── hooks/             WebSocket hooks per server
+│   │   └── ...
+│   └── README.md              UI-specific docs
+│
+├── hermes/                    Node.js orchestration engine
+│   ├── core/                  NATS, agents, SQLite, file watcher, role-doc bootstrap
+│   ├── workflows/             XState machines (build, warzone)
+│   ├── servers/               Express + WebSocket servers (chat/build/warzone)
+│   ├── .env.example           Template — copy to hermes/.env and seed UUIDs
+│   └── HERMES.md              Engine reference
+│
+├── .claude/CLAUDE.md          Planner role specification
+├── .gemini/GEMINI.md          Builder role specification
+├── .codex/CODEX.md            Auditor role specification
+│
+├── package.json               Root — workspaces + dev script
+├── README.md                  This file
+├── SETUP.md                   Install & run guide
+└── workflow.md                End-to-end pipeline walkthrough
+```
+
+---
+
 ## Three-Agent Pipeline
 
 ### Build flow
@@ -196,11 +97,11 @@ idle → planning → building → auditing → awaiting_approval → (loop | do
 
 | Stage | Agent | Output |
 |---|---|---|
-| `planning` | Claude | `Plan.md` (overwritten per task) |
-| `building` | Gemini | `Build-Log.md` (append-only, one entry per iteration) |
-| `auditing` | Codex | `Build-Feedback.md` (grade A/B/C/F per audit) |
+| `planning` | Claude | `<slug>-Plan.md` (slug chosen by Claude on a new project, or fixed by the UI on a continuation) |
+| `building` | Gemini | `<slug>-Build-Log.md` (append-only within the task) + deliverables under `<slug>/` |
+| `auditing` | Codex | `<slug>-Build-Feedback.md` (grade A/B/C/F per audit) |
 
-On **grade A** the task is marked done. On **B/C/F** the user approves in the UI and Gemini rebuilds from the same `Plan.md` using Codex's feedback. Retry depth is capped — on repeated failure the pipeline pauses for human review.
+On **grade A** the task is marked done. On **B/C/F** the user approves in the UI and Gemini rebuilds from the same `<slug>-Plan.md` using Codex's feedback. Retry depth is capped — on repeated failure the pipeline pauses for human review. As soon as the task completes (grade A, skip, or abort), the three meta files move into `Build-History/<slug>/{Plan.md, Build-Log.md, Build-Feedback.md}` (slug prefix dropped). The `<slug>/` deliverable folder stays in place — re-select it from the Build tab's "Project" dropdown to continue iterating on the same project.
 
 ### Warzone flow (pre-build discussion)
 
@@ -208,7 +109,7 @@ On **grade A** the task is marked done. On **B/C/F** the user approves in the UI
 idle → discussing_claude → discussing_gemini → discussing_codex → awaiting_approval
 ```
 
-All three agents append to `WarZone.md` in order: Claude frames the idea, Gemini proposes a build approach, Codex audits both takes. When done, the UI renders each agent's contribution as pretty-printed markdown for human review. After approval, reference `WarZone.md` in a real Build task.
+All three agents append to `<slug>-WarZone.md` in order — Claude picks the slug on the first round, then frames the idea; Gemini proposes a build approach; Codex audits both takes. When done, the UI renders each agent's contribution as pretty-printed markdown for human review. After approval, submit again to add another round on the same topic. Click **New Discussion** in the Warzone header to archive the file into `WarZone-History/<slug>/WarZone.md` and start a fresh topic.
 
 ### Chat
 
@@ -222,12 +123,13 @@ Hermes uses file writes as state-transition signals. A chokidar watcher publishe
 
 | File | Owner | Signal pattern | NATS event |
 |---|---|---|---|
-| `Plan.md` | Claude | `**Plan Status:** READY` | `plan.completed` |
-| `Build-Log.md` | Gemini | new `### Iteration N` entry | `agent.completed` |
-| `Build-Feedback.md` | Codex | `**Audit Grade:** [ABCF]` | `grade.received` |
-| `WarZone.md` | All three | `**Planner Status:** DONE` → `**Builder Status:** DONE` → `**Auditor Status:** READY TO BUILD` | `discuss.claude_done` → `discuss.gemini_done` → `discuss.complete` |
+| `<slug>-Plan.md` | Claude | `**Plan Status:** READY` | `plan.completed` |
+| `<slug>-Build-Log.md` | Gemini | new `### Iteration N` entry | `agent.completed` |
+| `<slug>-Build-Feedback.md` | Codex | `**Audit Grade:** [ABCF]` | `grade.received` |
+| `<slug>/` | Gemini | (not watched) | — deliverable folder per project |
+| `<slug>-WarZone.md` | All three | `**Planner Status:** DONE` → `**Builder Status:** DONE` → `**Auditor Status:** READY TO BUILD` | `discuss.claude_done` → `discuss.gemini_done` → `discuss.complete` |
 
-`Plan.md` is deleted by `submitTask` before each new build, so every plan write is unambiguously a new plan. The others are append-only and the watcher compares content deltas.
+The watcher uses globs (`*-Plan.md`, `*-Build-Log.md`, `*-Build-Feedback.md`) at the project root — deliverable subfolders, `Build-History/`, and `WarZone-History/` are not watched. Each task's three meta files move into `Build-History/<slug>/` the moment the task completes (or is aborted); `submitTask` re-runs the same archival as a safety net to catch any stale files left behind by a crash. Deliverables stay in their `<slug>/` folder; the user can iterate on them by selecting **Continue: \<slug\>** in the Build tab.
 
 ---
 
@@ -235,32 +137,17 @@ Hermes uses file writes as state-transition signals. A chokidar watcher publishe
 
 - Agents are scoped to `WORK_DIR` and run with standard user permissions.
 - Each role doc (`.claude/CLAUDE.md`, `.gemini/GEMINI.md`, `.codex/CODEX.md`) restricts file ownership — Gemini cannot write to `Plan.md`, Codex cannot write to `Build-Log.md`, etc.
-- `hermes/` is off-limits to all agents — only the human edits the engine.
+- `hermes/`, `argus-ui/`, and any directory outside `WORK_DIR` are off-limits to all agents — only the human edits the engine and dashboard.
 - Retry depth is capped (1 retry per state transition) to prevent runaway loops. On repeated failure the pipeline transitions to `paused` for human review.
 - Every NATS event is persisted to `hermes/hermes.db` for post-hoc debugging.
 
 ---
 
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `ECONNREFUSED` on startup | Start `nats-server &` before `npm run dev`. |
-| Claude session expired / `exit code 1` | Re-seed `CLAUDE_SESSION_ID` in `hermes/.env`, restart Hermes. |
-| Gemini session expired | Re-seed `GEMINI_SESSION_ID`, restart Hermes. |
-| Codex session expired | Re-seed `CODEX_SESSION_ID`, restart Hermes. |
-| Stuck in `planning` | Claude did not write `**Plan Status:** READY` to `Plan.md`. Check the `[build]` stdout. |
-| Stuck in `building` | Gemini did not append a new `### Iteration` to `Build-Log.md`. |
-| Stuck in `auditing` | Codex did not write `**Audit Grade:** [ABCF]` to `Build-Feedback.md`. |
-| Warzone stuck mid-phase | Check `WarZone.md` for the expected status marker at the current phase. |
-| Edits to `hermes/core/agents.json` don't take effect | Restart Hermes — agents.json is loaded once on startup and cached in memory. |
-
----
-
 ## Docs
 
-- **[workflow.md](workflow.md)** — full end-to-end pipeline walkthrough, state tables, file signal table, troubleshooting matrix
-- **[hermes/HERMES.md](hermes/HERMES.md)** — engine reference (folder structure, `.env` fields, agents.json config, Codex CLI quirks, session management matrix)
+- **[SETUP.md](SETUP.md)** — install, configure, run, troubleshoot
+- **[workflow.md](workflow.md)** — full end-to-end pipeline walkthrough, state tables, file signal table
+- **[hermes/HERMES.md](hermes/HERMES.md)** — engine reference (folder structure, `.env` fields, `agents.json` config, Codex CLI quirks, session-management matrix)
 - **[argus-ui/README.md](argus-ui/README.md)** — UI stack, scripts, section map, extension guide
 - **[.claude/CLAUDE.md](.claude/CLAUDE.md)** / **[.gemini/GEMINI.md](.gemini/GEMINI.md)** / **[.codex/CODEX.md](.codex/CODEX.md)** — role specifications each agent is prompted with
 

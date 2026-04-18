@@ -8,7 +8,9 @@ interface BuildViewProps {
   iteration: number;
   grade?: string;
   lines: OutputLine[];
-  onSubmit: (description: string) => void;
+  droppedLineCount: number;
+  projects: string[];
+  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string }) => void;
   onApprove: () => void;
   onSkip: () => void;
   onRetry: () => void;
@@ -42,37 +44,35 @@ function ProgressStrip({ state }: { state: BuildState }) {
         {steps.map((step) => {
           const stepIdx = stateOrder.indexOf(step.key as BuildState);
           const done = currentIdx > stepIdx;
-          const active =
-            state === step.key || (state === 'paused' && step.key === 'building');
+          const active = state === step.key || (state === 'paused' && step.key === 'building');
           return (
             <div
               key={step.key}
               className="flex-1"
               style={{
                 height: done || active ? 2 : 1,
-                background: done || active ? 'var(--color-accent)' : 'var(--color-ink-3)',
+                background: done || active ? '#1c69d4' : '#bbbbbb',
                 marginRight: 2,
               }}
             />
           );
         })}
       </div>
-      <div className="flex w-full" style={{ marginTop: 8 }}>
+      <div className="flex w-full mt-2">
         {steps.map((step) => {
           const stepIdx = stateOrder.indexOf(step.key as BuildState);
           const done = currentIdx > stepIdx;
-          const active =
-            state === step.key || (state === 'paused' && step.key === 'building');
+          const active = state === step.key || (state === 'paused' && step.key === 'building');
+          const activeColor = done || active ? '#262626' : '#bbbbbb';
           return (
             <span
               key={step.key}
               className="flex-1 uppercase"
               style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                fontWeight: 500,
+                fontSize: 12,
+                fontWeight: 400,
                 letterSpacing: '0.15em',
-                color: done || active ? 'var(--color-fg-0)' : 'var(--color-fg-2)',
+                color: activeColor,
               }}
             >
               {step.label}
@@ -84,33 +84,48 @@ function ProgressStrip({ state }: { state: BuildState }) {
   );
 }
 
-function OutputLog({ lines }: { lines: OutputLine[] }) {
+function OutputLog({ lines, droppedLineCount }: { lines: OutputLine[]; droppedLineCount: number }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [lines]);
 
+  const totalLines = lines.length + droppedLineCount;
+
   return (
     <div
       className="flex-1 overflow-y-auto min-h-0"
       style={{
-        background: 'var(--color-ink-2)',
-        color: 'var(--color-fg-0)',
-        border: '1px solid var(--color-ink-3)',
-        padding: 24,
-        fontFamily: 'var(--font-mono)',
-        fontSize: 13,
-        lineHeight: 1.55,
+        background: '#262626',
+        color: '#ffffff',
+        padding: 32,
+        fontFamily: 'var(--font-body)',
+        fontSize: 14,
+        lineHeight: 1.3,
       }}
     >
+      {droppedLineCount > 0 && (
+        <div
+          className="uppercase"
+          style={{
+            color: '#bbbbbb',
+            fontSize: 11,
+            letterSpacing: '0.15em',
+            paddingBottom: 12,
+            marginBottom: 12,
+            borderBottom: '1px solid #3a3a3a',
+          }}
+        >
+          Showing last {lines.length} of {totalLines} lines · {droppedLineCount} earlier {droppedLineCount === 1 ? 'line' : 'lines'} dropped from view
+        </div>
+      )}
       {lines.length === 0 ? (
-        <p style={{ color: 'var(--color-fg-2)' }}>Output will appear here.</p>
+        <p style={{ color: '#757575' }}>Output will appear here.</p>
       ) : (
         lines.map((l, i) => (
           <div key={i}>
-            <span style={{ color: 'var(--color-accent)' }}>[{l.agent}]</span>{' '}
-            <span style={{ color: 'var(--color-fg-2)' }}>·</span>{' '}
-            <span style={{ color: 'var(--color-fg-0)' }}>{l.line}</span>
+            <span style={{ color: '#bbbbbb' }}>[{l.agent}]</span>{' '}
+            <span style={{ color: '#ffffff' }}>{l.line}</span>
           </div>
         ))
       )}
@@ -125,6 +140,8 @@ export function BuildView({
   iteration,
   grade,
   lines,
+  droppedLineCount,
+  projects,
   onSubmit,
   onApprove,
   onSkip,
@@ -132,15 +149,28 @@ export function BuildView({
   onAbort,
 }: BuildViewProps) {
   const [input, setInput] = useState('');
+  // 'new' or an existing project slug to continue. Reset to 'new' whenever the project
+  // list changes (e.g. user manually deleted the folder backing the current selection).
+  const [projectSel, setProjectSel] = useState<string>('new');
+  useEffect(() => {
+    if (projectSel !== 'new' && !projects.includes(projectSel)) {
+      setProjectSel('new');
+    }
+  }, [projects, projectSel]);
   const busy = ['planning', 'building', 'auditing'].includes(state);
   const showForm = state === 'idle' || state === 'done';
   const showApproval = state === 'awaiting_approval';
   const showPaused = state === 'paused';
+  const continueSlug = projectSel === 'new' ? null : projectSel;
 
   const handleSubmit = () => {
     const text = input.trim();
     if (!text) return;
-    onSubmit(text);
+    if (continueSlug) {
+      onSubmit(text, { mode: 'continue', slug: continueSlug });
+    } else {
+      onSubmit(text);
+    }
     setInput('');
   };
 
@@ -152,45 +182,19 @@ export function BuildView({
   };
 
   return (
-    <div
-      className="flex flex-col h-full"
-      style={{
-        background: 'var(--color-ink-0)',
-        color: 'var(--color-fg-0)',
-      }}
-    >
+    <div className="flex flex-col h-full bg-white text-[#262626]">
       {/* Header */}
-      <div
-        className="shrink-0"
-        style={{
-          padding: '40px 60px 28px',
-          borderBottom: '1px solid var(--color-ink-3)',
-        }}
-      >
+      <div className="shrink-0" style={{ padding: '48px 60px 32px', borderBottom: '1px solid #bbbbbb' }}>
         <div className="flex items-start justify-between">
           <div>
-            <p
+            <h1
               className="uppercase"
               style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                fontWeight: 500,
-                letterSpacing: '0.15em',
-                color: 'var(--color-accent)',
-                marginBottom: 10,
-              }}
-            >
-              Build pipeline
-            </p>
-            <h1
-              style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize: 44,
-                fontWeight: 400,
-                lineHeight: 1.1,
-                letterSpacing: '-0.02em',
-                margin: 0,
-                color: 'var(--color-fg-0)',
+                fontFamily: 'var(--font-display)',
+                fontSize: 60,
+                fontWeight: 300,
+                lineHeight: 1.3,
+                letterSpacing: '0.02em',
               }}
             >
               Build
@@ -198,43 +202,23 @@ export function BuildView({
             <p
               style={{
                 fontSize: 14,
-                color: 'var(--color-fg-1)',
+                fontWeight: 400,
+                color: '#757575',
                 marginTop: 8,
               }}
             >
               Claude plans · Gemini builds · Codex audits
             </p>
           </div>
-          <div
-            className="flex flex-col items-end"
-            style={{ gap: 8, paddingTop: 18 }}
-          >
+          <div className="flex flex-col items-end" style={{ gap: 8, paddingTop: 24 }}>
             <span
-              className={clsx('uppercase')}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                fontWeight: 500,
-                letterSpacing: '0.15em',
-                color: busy
-                  ? 'var(--color-accent)'
-                  : state === 'done'
-                    ? 'var(--color-fg-0)'
-                    : 'var(--color-fg-2)',
-              }}
+              className={clsx('uppercase', busy ? 'text-[#1c69d4]' : state === 'done' ? 'text-[#262626]' : 'text-[#bbbbbb]')}
+              style={{ fontSize: 12, fontWeight: 400, letterSpacing: '0.15em' }}
             >
               {STATE_LABELS[state]}
             </span>
             {iteration > 0 && (
-              <span
-                className="uppercase"
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  color: 'var(--color-fg-2)',
-                  letterSpacing: '0.15em',
-                }}
-              >
+              <span className="uppercase" style={{ fontSize: 12, color: '#757575', letterSpacing: '0.15em' }}>
                 Iteration {iteration}
               </span>
             )}
@@ -242,7 +226,7 @@ export function BuildView({
         </div>
 
         {(busy || state === 'awaiting_approval' || state === 'done') && (
-          <div style={{ marginTop: 28 }}>
+          <div style={{ marginTop: 32 }}>
             <ProgressStrip state={state} />
           </div>
         )}
@@ -254,85 +238,58 @@ export function BuildView({
               marginTop: 24,
               fontSize: 14,
               fontWeight: 400,
-              color: 'var(--color-fg-1)',
+              color: '#757575',
               lineHeight: 1.3,
-              fontFamily: 'var(--font-mono)',
             }}
           >
-            › {task}
+            {task}
           </p>
         )}
       </div>
 
       {/* Content */}
-      <div
-        className="flex-1 flex flex-col min-h-0"
-        style={{ padding: '32px 60px', gap: 28 }}
-      >
-        {lines.length > 0 && <OutputLog lines={lines} />}
+      <div className="flex-1 flex flex-col min-h-0" style={{ padding: '40px 60px', gap: 32 }}>
+        {lines.length > 0 && <OutputLog lines={lines} droppedLineCount={droppedLineCount} />}
 
         {/* Approval panel */}
         {showApproval && (
-          <div
-            className="shrink-0"
-            style={{
-              background: 'var(--color-ink-1)',
-              border: '1px solid var(--color-ink-3)',
-              padding: 28,
-            }}
-          >
-            <div
-              className="flex items-end justify-between"
-              style={{ marginBottom: 20 }}
-            >
+          <div className="shrink-0 bg-white" style={{ padding: '32px 0' }}>
+            <div className="flex items-end justify-between" style={{ marginBottom: 24 }}>
               <h2
                 className="uppercase"
                 style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 12,
-                  fontWeight: 500,
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 18,
+                  fontWeight: 900,
                   letterSpacing: '0.15em',
-                  color: 'var(--color-fg-1)',
-                  margin: 0,
+                  color: '#262626',
                 }}
               >
-                Audit complete
+                Audit Complete
               </h2>
               {grade && (
                 <span
+                  className="uppercase"
                   style={{
-                    fontFamily: 'var(--font-sans)',
-                    fontSize: 56,
-                    fontWeight: 500,
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 60,
+                    fontWeight: 300,
                     lineHeight: 1,
-                    letterSpacing: '-0.03em',
-                    color:
-                      grade === 'A'
-                        ? 'var(--color-accent)'
-                        : 'var(--color-fg-0)',
+                    color: grade === 'A' ? '#1c69d4' : '#262626',
                   }}
                 >
                   {grade}
                 </span>
               )}
             </div>
-            <p
-              style={{
-                fontSize: 15,
-                color: 'var(--color-fg-1)',
-                lineHeight: 1.5,
-                margin: 0,
-                marginBottom: 24,
-              }}
-            >
-              Codex flagged issues. Revise to continue with another iteration,
-              or skip to mark done.
+            <p style={{ fontSize: 16, fontWeight: 400, color: '#757575', lineHeight: 1.3, marginBottom: 32 }}>
+              Codex flagged issues. Revise to continue with another iteration, or skip to mark done.
             </p>
-            <div className="flex items-center" style={{ gap: 16 }}>
+            <div className="flex items-center" style={{ gap: 24 }}>
               <PrimaryButton onClick={onApprove}>Revise →</PrimaryButton>
               <SecondaryButton onClick={onSkip}>Skip</SecondaryButton>
               <div className="ml-auto">
-                <GhostButton onClick={onAbort}>Abort</GhostButton>
+                <SecondaryButton onClick={onAbort} bold>Abort</SecondaryButton>
               </div>
             </div>
           </div>
@@ -340,42 +297,26 @@ export function BuildView({
 
         {/* Paused panel */}
         {showPaused && (
-          <div
-            className="shrink-0"
-            style={{
-              background: 'var(--color-ink-1)',
-              border: '1px solid var(--color-ink-3)',
-              padding: 28,
-            }}
-          >
+          <div className="shrink-0 bg-white" style={{ padding: '32px 0' }}>
             <h2
               className="uppercase"
               style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 12,
-                fontWeight: 500,
+                fontFamily: 'var(--font-body)',
+                fontSize: 18,
+                fontWeight: 900,
                 letterSpacing: '0.15em',
-                color: 'var(--color-fg-1)',
-                margin: 0,
-                marginBottom: 10,
+                color: '#262626',
+                marginBottom: 12,
               }}
             >
-              Paused after retry
+              Paused After Retry
             </h2>
-            <p
-              style={{
-                fontSize: 15,
-                color: 'var(--color-fg-1)',
-                lineHeight: 1.5,
-                margin: 0,
-                marginBottom: 24,
-              }}
-            >
+            <p style={{ fontSize: 16, fontWeight: 400, color: '#757575', lineHeight: 1.3, marginBottom: 32 }}>
               Agent failed twice. Retry manually or abort.
             </p>
-            <div className="flex items-center" style={{ gap: 16 }}>
+            <div className="flex items-center" style={{ gap: 24 }}>
               <PrimaryButton onClick={onRetry}>Retry →</PrimaryButton>
-              <GhostButton onClick={onAbort}>Abort</GhostButton>
+              <SecondaryButton onClick={onAbort} bold>Abort</SecondaryButton>
             </div>
           </div>
         )}
@@ -383,52 +324,87 @@ export function BuildView({
         {/* Task input */}
         {showForm && (
           <div className="shrink-0">
+            <div style={{ marginBottom: 24 }}>
+              <label
+                className="uppercase"
+                htmlFor="project-selector"
+                style={{
+                  fontSize: 12,
+                  color: '#757575',
+                  letterSpacing: '0.15em',
+                  marginRight: 16,
+                }}
+              >
+                Project
+              </label>
+              <select
+                id="project-selector"
+                value={projectSel}
+                onChange={(e) => setProjectSel(e.target.value)}
+                className="bg-transparent outline-none"
+                style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: '#262626',
+                  letterSpacing: '0.05em',
+                  padding: '8px 0',
+                  borderBottom: '1px solid #262626',
+                  minWidth: 240,
+                }}
+              >
+                <option value="new">New project</option>
+                {projects.map((slug) => (
+                  <option key={slug} value={slug}>
+                    Continue: {slug}
+                  </option>
+                ))}
+              </select>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: '#757575',
+                  marginTop: 8,
+                  lineHeight: 1.3,
+                }}
+              >
+                {continueSlug
+                  ? `New work appends to the existing ${continueSlug}/ folder.`
+                  : 'Claude picks a slug and Gemini creates a new <slug>/ folder for the deliverables.'}
+              </p>
+            </div>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Describe what you want to build..."
+              placeholder={
+                continueSlug
+                  ? `What changes do you want to make to ${continueSlug}?`
+                  : 'Describe what you want to build...'
+              }
               rows={3}
-              className="w-full outline-none resize-none"
+              className="w-full bg-transparent outline-none resize-none"
               style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize: 15,
+                fontFamily: 'var(--font-body)',
+                fontSize: 16,
                 fontWeight: 400,
-                color: 'var(--color-fg-0)',
-                lineHeight: 1.5,
-                padding: '14px 0 12px',
-                background: 'transparent',
-                borderBottom: '1px solid var(--color-ink-3)',
-                borderTop: 'none',
-                borderLeft: 'none',
-                borderRight: 'none',
-                transition: 'border-color 150ms ease-out',
+                color: '#262626',
+                lineHeight: 1.3,
+                padding: '16px 0 12px',
+                borderBottom: '1px solid #262626',
               }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderBottom = '2px solid var(--color-accent)';
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderBottom = '1px solid var(--color-ink-3)';
-              }}
+              onFocus={(e) => (e.currentTarget.style.borderBottom = '2px solid #1c69d4')}
+              onBlur={(e) => (e.currentTarget.style.borderBottom = '1px solid #262626')}
             />
-            <div
-              className="flex items-center justify-between"
-              style={{ marginTop: 20 }}
-            >
+            <div className="flex items-center justify-between" style={{ marginTop: 24 }}>
               <p
                 className="uppercase"
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  color: 'var(--color-fg-2)',
-                  letterSpacing: '0.15em',
-                  margin: 0,
-                }}
+                style={{ fontSize: 12, color: '#757575', letterSpacing: '0.15em' }}
               >
                 Shift + Enter for new line · Enter to submit
               </p>
               <PrimaryButton onClick={handleSubmit} disabled={!input.trim()}>
-                Start build →
+                {continueSlug ? 'Continue Build →' : 'Start Build →'}
               </PrimaryButton>
             </div>
           </div>
@@ -451,29 +427,18 @@ function PrimaryButton({
     <button
       onClick={onClick}
       disabled={disabled}
+      className={clsx(
+        'uppercase transition-colors',
+        disabled
+          ? 'border border-[#bbbbbb] text-[#bbbbbb] cursor-not-allowed bg-transparent'
+          : 'bg-[#1c69d4] text-white border border-[#1c69d4] hover:bg-[#0653b6] hover:border-[#0653b6]'
+      )}
       style={{
-        fontSize: 14,
-        fontWeight: 600,
+        fontSize: 16,
+        fontWeight: 700,
         lineHeight: 1.2,
-        letterSpacing: '0.02em',
-        padding: '12px 22px',
-        background: disabled ? 'transparent' : 'var(--color-accent)',
-        color: disabled ? 'var(--color-fg-2)' : 'var(--color-ink-0)',
-        border: `1px solid ${disabled ? 'var(--color-ink-3)' : 'var(--color-accent)'}`,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: 'background 150ms ease-out, border-color 150ms ease-out',
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) {
-          e.currentTarget.style.background = 'var(--color-accent-dim)';
-          e.currentTarget.style.borderColor = 'var(--color-accent-dim)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!disabled) {
-          e.currentTarget.style.background = 'var(--color-accent)';
-          e.currentTarget.style.borderColor = 'var(--color-accent)';
-        }
+        letterSpacing: '0.05em',
+        padding: '16px 32px',
       }}
     >
       {children}
@@ -484,67 +449,24 @@ function PrimaryButton({
 function SecondaryButton({
   children,
   onClick,
+  bold,
 }: {
   children: React.ReactNode;
   onClick: () => void;
+  bold?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      className="uppercase text-[#262626] hover:text-[#1c69d4] transition-colors"
       style={{
-        fontSize: 14,
-        fontWeight: 500,
-        lineHeight: 1.2,
-        padding: '12px 0 10px',
-        color: 'var(--color-fg-0)',
-        background: 'transparent',
-        border: 'none',
-        borderBottom: '1px solid var(--color-fg-0)',
-        cursor: 'pointer',
-        transition: 'color 150ms ease-out, border-color 150ms ease-out',
+        fontSize: 16,
+        fontWeight: bold ? 700 : 400,
+        lineHeight: 1.15,
+        letterSpacing: '0.05em',
+        padding: '16px 0 12px',
+        borderBottom: '1px solid currentColor',
       }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.color = 'var(--color-accent)';
-        e.currentTarget.style.borderColor = 'var(--color-accent)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.color = 'var(--color-fg-0)';
-        e.currentTarget.style.borderColor = 'var(--color-fg-0)';
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function GhostButton({
-  children,
-  onClick,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="uppercase"
-      style={{
-        fontSize: 12,
-        fontWeight: 500,
-        lineHeight: 1.2,
-        letterSpacing: '0.15em',
-        fontFamily: 'var(--font-mono)',
-        padding: '10px 0 8px',
-        color: 'var(--color-danger)',
-        background: 'transparent',
-        border: 'none',
-        borderBottom: '1px solid var(--color-danger)',
-        cursor: 'pointer',
-        opacity: 0.8,
-        transition: 'opacity 150ms ease-out',
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-      onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.8')}
     >
       {children}
     </button>

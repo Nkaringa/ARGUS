@@ -5,6 +5,7 @@ import { ChatView } from './components/ChatView';
 import { BuildView } from './components/BuildView';
 import { WarzoneView } from './components/WarzoneView';
 import { LogsView } from './components/LogsView';
+import { HistoryView } from './components/HistoryView';
 import { useBuildSocket } from './hooks/useBuildSocket';
 import { useChatSocket } from './hooks/useChatSocket';
 import { useWarzoneSocket } from './hooks/useWarzoneSocket';
@@ -22,7 +23,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-full" style={{ background: 'var(--color-ink-0)' }}>
+    <div className="flex h-full bg-white">
       <Sidebar
         current={section}
         onNavigate={setSection}
@@ -63,6 +64,8 @@ export default function App() {
             iteration={build.iteration}
             grade={build.grade}
             lines={build.lines}
+            droppedLineCount={build.droppedLineCount}
+            projects={build.projects}
             onSubmit={build.submitTask}
             onApprove={() => build.sendApproval('approve')}
             onSkip={() => build.sendApproval('skip')}
@@ -74,13 +77,17 @@ export default function App() {
           <WarzoneView
             state={warzone.state}
             idea={warzone.idea}
+            slug={warzone.slug}
             lines={warzone.lines}
+            droppedLineCount={warzone.droppedLineCount}
             onSubmit={warzone.submitIdea}
             onApprove={() => warzone.sendApproval('approve')}
             onAbort={() => warzone.sendApproval('abort')}
+            onNewDiscussion={warzone.newDiscussion}
           />
         )}
         {section === 'logs' && <LogsView history={build.history} />}
+        {section === 'archive' && <HistoryView />}
       </main>
     </div>
   );

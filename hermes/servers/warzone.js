@@ -8,8 +8,10 @@ const WebSocket = require('ws');
 
 const { connectNATS, subscribe } = require('../core/events');
 const { startWatcher } = require('../core/watcher');
-const { startWarzoneWorkflow, submitDiscuss, sendDiscussApproval, getWarzoneState, setWarzoneBroadcast } = require('../workflows/warzone');
+const { startWarzoneWorkflow, submitDiscuss, sendDiscussApproval, newDiscussion, getWarzoneState, setWarzoneBroadcast } = require('../workflows/warzone');
 const { corsMiddleware, authMiddleware, wsAuth } = require('../core/auth');
+const { ensureRoleDocs } = require('../core/role-docs');
+const { listDiscussionHistory, readDiscussionHistory } = require('../core/archive');
 
 const PORT = process.env.WARZONE_PORT || 3003;
 const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
@@ -68,6 +70,19 @@ app.post('/discuss/approval', (req, res) => {
     res.json({ ok: true });
 });
 
+// POST /warzone/new-discussion — archive the current <slug>-WarZone.md and reset state
+// so the next submit starts a fresh discussion topic (Claude picks a new slug).
+// Only valid from idle or awaiting_discuss_approval — workflow throws otherwise.
+app.post('/warzone/new-discussion', (req, res) => {
+    try {
+        newDiscussion();
+        logBuffer.length = 0;
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(409).json({ error: err.message });
+    }
+});
+
 app.post('/stop', (req, res) => {
     sendDiscussApproval('abort');
     logBuffer.length = 0;
@@ -78,13 +93,32 @@ app.get('/state', (req, res) => {
     res.json(getWarzoneState());
 });
 
-// Serve the raw WarZone.md so the UI can render the final discussion markdown
-// after all three agents finish. Intentionally simple — no caching, no parsing here;
-// the frontend owns parsing + markdown rendering.
+// GET /history/discussions — list archived discussions (newest first) for the Archive viewer.
+app.get('/history/discussions', (req, res) => {
+    res.json({ discussions: listDiscussionHistory() });
+});
+
+// GET /history/discussions/:slug — read the WarZone.md for one archived discussion.
+app.get('/history/discussions/:slug', (req, res) => {
+    const data = readDiscussionHistory(req.params.slug);
+    if (!data) {
+        return res.status(404).json({ error: 'archive not found' });
+    }
+    res.json(data);
+});
+
+// Serve the raw <slug>-WarZone.md for the active discussion so the UI can render
+// the final discussion markdown after all three agents finish. The slug is the
+// workflow's source of truth — we never scan the disk here.
+// Intentionally simple — no caching, no parsing; the frontend owns parsing + rendering.
 app.get('/warzone.md', (req, res) => {
-    const filePath = path.join(process.env.WORK_DIR, 'WarZone.md');
+    const { slug } = getWarzoneState();
+    if (!slug) {
+        return res.status(404).json({ error: 'No discussion in flight' });
+    }
+    const filePath = path.join(process.env.WORK_DIR, `${slug}-WarZone.md`);
     if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'WarZone.md does not exist yet' });
+        return res.status(404).json({ error: `${slug}-WarZone.md does not exist yet` });
     }
     try {
         const content = fs.readFileSync(filePath, 'utf8');
@@ -95,6 +129,7 @@ app.get('/warzone.md', (req, res) => {
 });
 
 (async () => {
+    ensureRoleDocs();
     await connectNATS();
 
     subscribe('warzone.output', (payload) => {
@@ -102,6 +137,13 @@ app.get('/warzone.md', (req, res) => {
         logBuffer.push(entry);
         if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
         broadcast({ type: 'output', ...entry });
+    });
+
+    // Topic-scoped agent-started events for the warzone pipeline. Mirrors the build server
+    // pattern so the Warzone tab can reflect agent activity in real time without picking up
+    // cross-pipeline noise.
+    subscribe('warzone.agent.started', (payload) => {
+        broadcast({ type: 'state', ...getWarzoneState(), agentStarted: payload });
     });
 
     startWatcher('warzone');

@@ -34,14 +34,18 @@ You are in direct chat mode. You are NOT in a build pipeline.
   - \`workflows/\` — XState state machines (build, warzone)
   - \`servers/\` — Express + WebSocket servers (chat:3001, build:3002, warzone:3003)
 - \`argus-ui/\` — frontend (React + TypeScript + Vite, port 5173)
-- \`Plan.md\` — Claude's plan for the current task (overwritten per task)
-- \`Build-Log.md\` — Gemini's iteration log
-- \`Build-Feedback.md\` — Codex's audit feedback
-- \`WarZone.md\` — three-agent discussion log
+- \`<slug>/\` — deliverable folder per project (HTML, CSS, JS, code Gemini wrote). One folder per slug.
+- \`<slug>-Plan.md\` — Claude's plan for the active task (one per task; slug chosen by Claude or set by the user via "Continue: <slug>")
+- \`<slug>-Build-Log.md\` — Gemini's iteration log for the active task
+- \`<slug>-Build-Feedback.md\` — Codex's audit feedback for the active task
+- \`<slug>-WarZone.md\` — three-agent discussion log for the active warzone topic
+- \`Build-History/\` — archive of past build tasks' meta files; each subfolder is one completed or aborted task
+- \`WarZone-History/\` — archive of past discussion topics; each subfolder is one closed discussion
 
 ## Rules
 - When the user asks about files or code, look in the project root above
-- Do NOT write to Plan.md, Build-Log.md, Build-Feedback.md, or WarZone.md
+- Do NOT write to any \`*-Plan.md\`, \`*-Build-Log.md\`, \`*-Build-Feedback.md\`, or \`*-WarZone.md\` file
+- Do NOT touch the Build-History/ or WarZone-History/ folders
 - Do NOT modify anything in hermes/
 `);
     console.log(`[chat] Wrote project context to ${geminiMd}`);
@@ -79,8 +83,13 @@ app.post('/chat', (req, res) => {
         return res.status(400).json({ error: 'agent must be builder, planner, or codex_auditor' });
     }
 
-    // Build a prompt that includes recent conversation history for context
-    const recentHistory = history.slice(-10);
+    // Build a prompt that includes recent conversation history for context.
+    // Filter out prior error broadcasts (lines like `[error] Gemini exited with code 42`)
+    // — those were UI breadcrumbs, not actual agent turns. Including them would have
+    // Gemini "see" itself errored and respond to its own prior failure as if it were real.
+    const recentHistory = history
+        .filter((m) => !(m.role === 'agent' && typeof m.text === 'string' && m.text.startsWith('[error]')))
+        .slice(-10);
     const historyText = recentHistory
         .map(m => `${m.role === 'user' ? 'Human' : 'Assistant'}: ${m.text}`)
         .join('\n');
@@ -88,13 +97,20 @@ app.post('/chat', (req, res) => {
         ? `${historyText}\n\nHuman: ${prompt.trim()}`
         : prompt.trim();
 
-    // Gemini runs in CHAT_DIR (no .gemini/ there = won't log to Build-Log.md)
-    // Claude + Codex run in WORK_DIR (sessions are project-scoped — must match where session was created)
+    // Gemini chat runs in CHAT_DIR (separate role doc, no Build-Log.md pollution).
+    // Gemini CLI scopes session storage by cwd, so chat needs its own session UUID
+    // seeded from CHAT_DIR — see GEMINI_CHAT_SESSION_ID. The agent key `chat_builder`
+    // resolves to that UUID; `builder` would resolve to the build-side UUID and fail
+    // with exit 42 because the session wouldn't exist in CHAT_DIR's store.
+    // Claude + Codex chat use the build-side agent keys directly — their cwd matches
+    // their seed location (both WORK_DIR), so no separate session is needed.
+    const agentKey = agent === 'builder' ? 'chat_builder' : agent;
     const agentCwd = agent === 'builder' ? CHAT_DIR : process.env.WORK_DIR;
 
     res.json({ ok: true });
-    runAgent(agent, fullPrompt, {
+    runAgent(agentKey, fullPrompt, {
         outputTopic: 'chat.output',
+        pipeline: 'chat',
         cwd: agentCwd,
     }).catch((err) => {
         broadcast({ type: 'chat_output', agent, line: `[error] ${err.message}` });
@@ -118,5 +134,14 @@ app.post('/chat', (req, res) => {
     server.listen(PORT, BIND_HOST, () => {
         console.log(`[chat] Running at http://${BIND_HOST}:${PORT}`);
         console.log(`[chat] Agent cwd: ${CHAT_DIR}`);
+        // Loud diagnostic if Gemini chat won't work — prevents users from chasing
+        // a misleading "exit 42" later when the real cause is an unseeded env var.
+        if (!process.env.GEMINI_CHAT_SESSION_ID) {
+            console.warn(
+                '[chat] GEMINI_CHAT_SESSION_ID is not set — Gemini chat will fail until you seed it.\n' +
+                '       To seed: mkdir -p ' + CHAT_DIR + ' && cd ' + CHAT_DIR + ' && gemini\n' +
+                '       (have one exchange, /exit, copy the UUID, paste into hermes/.env, restart hermes)',
+            );
+        }
     });
 })();

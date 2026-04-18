@@ -1,108 +1,37 @@
 @import "tailwindcss";
 
-@theme {
-  /* Canvas + surface ramp — near-black, warmer than pure #000 */
-  --color-ink-0: #0a0a0a;
-  --color-ink-1: #111111;
-  --color-ink-2: #1a1a1a;
-  --color-ink-3: #2a2a2a;
-
-  /* Text ramp */
-  --color-fg-0: #ededed;
-  --color-fg-1: #a0a0a0;
-  --color-fg-2: #5a5a5a;
-
-  /* Single accent — interactive elements, active state, grade A, busy indicators */
-  --color-accent: #b6ff3c;
-  --color-accent-dim: #7fbb1c;
-  --color-accent-soft: rgba(182, 255, 60, 0.13);
-
-  /* Semantic — for grade B/C/F we use weight + uppercase (no semantic color),
-     but `danger` is available for Stop/Abort buttons only */
-  --color-danger: #ff6b4a;
-
-  /* Font stacks — Geist loaded via <link> in index.html */
-  --font-sans: "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-
-  /* Sidebar width — kept from previous design, feels right at 280px */
-  --sidebar-width: 280px;
-}
-
 :root {
   --sidebar-width: 280px;
+  --bmw-blue: #1c69d4;
+  --bmw-focus: #0653b6;
+  --bmw-ink: #262626;
+  --bmw-meta: #757575;
+  --bmw-silver: #bbbbbb;
+  --font-display: 'BMWTypeNextLatin Light', 'Helvetica', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', sans-serif;
+  --font-body: 'BMWTypeNextLatin', 'Helvetica', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', sans-serif;
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
+html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
 }
 
 body {
-  background: var(--color-ink-0);
-  color: var(--color-fg-0);
-  font-family: var(--font-sans);
+  background: #ffffff;
+  color: #262626;
+  font-family: var(--font-body);
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.15;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-::selection {
-  background: var(--color-accent);
-  color: var(--color-ink-0);
-}
-
-/* Zero-radius scrollbar tuned for dark surfaces */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-ink-3);
-  border-radius: 0;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-fg-2);
-}
-
-/* Focus ring — thin accent outline */
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-/* Blinking block cursor — used in any terminal-style surface */
-@keyframes cursor-blink {
-  0%,
-  49% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-
-.cursor-blink {
-  animation: cursor-blink 1s steps(2, start) infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cursor-blink {
-    animation: none;
-    opacity: 1;
-  }
-}
+/* Zero-radius scrollbar — BMW is sharp-cornered everywhere */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #bbbbbb; border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: #757575; }
