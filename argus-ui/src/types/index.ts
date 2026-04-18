@@ -1,6 +1,21 @@
 export type AgentKey = 'builder' | 'planner' | 'codex_auditor';
 
-export type Section = 'chat-gemini' | 'chat-claude' | 'chat-codex' | 'build' | 'warzone' | 'logs';
+export type Section = 'chat-gemini' | 'chat-claude' | 'chat-codex' | 'build' | 'warzone' | 'logs' | 'archive';
+
+export interface HistoryEntry {
+  slug: string;
+  mtime: number;
+}
+
+export interface BuildArchive {
+  plan: string;
+  buildLog: string;
+  buildFeedback: string;
+}
+
+export interface DiscussionArchive {
+  warzone: string;
+}
 
 export type BuildState =
   | 'idle'
@@ -49,5 +64,6 @@ export interface BuildSocketState {
 export interface WarzoneSocketState {
   state: WarzoneState;
   idea: string | null;
+  slug: string | null;
   lines: OutputLine[];
 }

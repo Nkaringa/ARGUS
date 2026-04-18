@@ -6,10 +6,13 @@ import { DiscussionReview } from './DiscussionReview';
 interface WarzoneViewProps {
   state: WarzoneState;
   idea: string | null;
+  slug: string | null;
   lines: OutputLine[];
+  droppedLineCount: number;
   onSubmit: (idea: string) => void;
   onApprove: () => void;
   onAbort: () => void;
+  onNewDiscussion: () => void;
 }
 
 const STATE_LABELS: Record<WarzoneState, string> = {
@@ -75,11 +78,13 @@ function DiscussProgress({ state }: { state: WarzoneState }) {
   );
 }
 
-function DiscussionPanel({ lines }: { lines: OutputLine[] }) {
+function DiscussionPanel({ lines, droppedLineCount }: { lines: OutputLine[]; droppedLineCount: number }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [lines]);
+
+  const totalLines = lines.length + droppedLineCount;
 
   return (
     <div
@@ -93,6 +98,21 @@ function DiscussionPanel({ lines }: { lines: OutputLine[] }) {
         lineHeight: 1.3,
       }}
     >
+      {droppedLineCount > 0 && (
+        <div
+          className="uppercase"
+          style={{
+            color: '#bbbbbb',
+            fontSize: 11,
+            letterSpacing: '0.15em',
+            paddingBottom: 12,
+            marginBottom: 12,
+            borderBottom: '1px solid #3a3a3a',
+          }}
+        >
+          Showing last {lines.length} of {totalLines} lines · {droppedLineCount} earlier {droppedLineCount === 1 ? 'line' : 'lines'} dropped from view
+        </div>
+      )}
       {lines.length === 0 ? (
         <p style={{ color: '#757575' }}>Agent discussion will appear here.</p>
       ) : (
@@ -108,11 +128,14 @@ function DiscussionPanel({ lines }: { lines: OutputLine[] }) {
   );
 }
 
-export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }: WarzoneViewProps) {
+export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubmit, onApprove, onAbort, onNewDiscussion }: WarzoneViewProps) {
   const [input, setInput] = useState('');
   const busy = state === 'discussing_claude' || state === 'discussing_gemini' || state === 'discussing_codex';
   const showForm = state === 'idle';
   const showApproval = state === 'awaiting_discuss_approval';
+  // New Discussion is only meaningful when there's a current discussion to archive AND
+  // we're not mid-flight. The server enforces the same gate — this is just UI affordance.
+  const canStartNewDiscussion = !!slug && (state === 'idle' || state === 'awaiting_discuss_approval');
 
   const handleSubmit = () => {
     const text = input.trim();
@@ -150,17 +173,58 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
               Sequential agent discussion
             </p>
           </div>
-          <span
-            className={clsx('uppercase', busy ? 'text-[#1c69d4]' : showApproval ? 'text-[#262626]' : 'text-[#bbbbbb]')}
-            style={{
-              fontSize: 12,
-              fontWeight: 400,
-              letterSpacing: '0.15em',
-              paddingTop: 24,
-            }}
-          >
-            {STATE_LABELS[state]}
-          </span>
+          <div style={{ paddingTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
+            <span
+              className={clsx('uppercase', busy ? 'text-[#1c69d4]' : showApproval ? 'text-[#262626]' : 'text-[#bbbbbb]')}
+              style={{
+                fontSize: 12,
+                fontWeight: 400,
+                letterSpacing: '0.15em',
+              }}
+            >
+              {STATE_LABELS[state]}
+            </span>
+            {slug && (
+              <span
+                className="uppercase"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: '0.15em',
+                  color: '#262626',
+                }}
+              >
+                Discussion: {slug}
+              </span>
+            )}
+            <button
+              onClick={onNewDiscussion}
+              disabled={!canStartNewDiscussion}
+              className={clsx(
+                'uppercase transition-colors',
+                canStartNewDiscussion
+                  ? 'text-[#262626] hover:text-[#1c69d4]'
+                  : 'text-[#bbbbbb] cursor-not-allowed',
+              )}
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: '0.15em',
+                padding: '4px 0',
+                borderBottom: '1px solid currentColor',
+                background: 'transparent',
+              }}
+              title={
+                !slug
+                  ? 'No active discussion to archive — submit one first'
+                  : busy
+                    ? 'Wait for the current round to finish'
+                    : 'Archive this discussion and start a new topic'
+              }
+            >
+              New Discussion
+            </button>
+          </div>
         </div>
 
         {state !== 'idle' && (
@@ -198,11 +262,11 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
               How Warzone Works
             </h2>
             <ol style={{ fontSize: 16, fontWeight: 400, color: '#262626', lineHeight: 1.5, paddingLeft: 24 }}>
-              <li>Claude frames the idea as a planner (files, approach, gotchas)</li>
+              <li>Claude frames the idea as a planner — picks a slug for the topic and writes <code>&lt;slug&gt;-WarZone.md</code></li>
               <li>Gemini proposes a build approach (stack, steps, concerns)</li>
               <li>Codex audits both takes and pokes holes</li>
-              <li>You review WarZone.md, then approve</li>
-              <li>Take the discussion to Build and reference WarZone.md in your prompt</li>
+              <li>You review the discussion, then approve</li>
+              <li>Submit again to add to the same topic, or click <em>New Discussion</em> to archive and start fresh</li>
             </ol>
           </div>
         )}
@@ -212,7 +276,7 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
         {showApproval ? (
           <DiscussionReview refreshKey={state} />
         ) : (
-          lines.length > 0 && <DiscussionPanel lines={lines} />
+          lines.length > 0 && <DiscussionPanel lines={lines} droppedLineCount={droppedLineCount} />
         )}
 
         {/* Approval */}
@@ -232,7 +296,7 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
               Discussion Ready
             </h2>
             <p style={{ fontSize: 16, fontWeight: 400, color: '#757575', lineHeight: 1.3, marginBottom: 32 }}>
-              All three agents have written their takes. Approve to save WarZone.md as a reference, then use it in Build.
+              All three agents have written their takes. Approve to keep this discussion open — submit again to add another round on the same topic, or click <em>New Discussion</em> in the header to archive and switch topics.
             </p>
             <div className="flex items-center" style={{ gap: 24 }}>
               <button
@@ -273,7 +337,11 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="What do you want to discuss? (e.g. build a real-time dashboard for Argus)"
+              placeholder={
+                slug
+                  ? `Add another round to "${slug}" (or click New Discussion above for a different topic)`
+                  : 'What do you want to discuss? (e.g. build a real-time dashboard for Argus)'
+              }
               rows={3}
               className="w-full bg-transparent outline-none resize-none"
               style={{
@@ -311,7 +379,7 @@ export function WarzoneView({ state, idea, lines, onSubmit, onApprove, onAbort }
                   padding: '16px 32px',
                 }}
               >
-                Start Discussion →
+                {slug ? 'Add Round →' : 'Start Discussion →'}
               </button>
             </div>
           </div>

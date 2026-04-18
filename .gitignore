@@ -15,11 +15,13 @@ hermes/.env.local
 
 # ─── Runtime artifacts ────────────────────────────────────────
 # Agents write these during a build. Never committed — they regenerate per run
-# and contain user-specific content.
-Plan.md
-Build-Log.md
-Build-Feedback.md
-WarZone.md
+# and contain user-specific content. Build-History/ holds archived past tasks.
+*-Plan.md
+*-Build-Log.md
+*-Build-Feedback.md
+*-WarZone.md
+Build-History/
+WarZone-History/
 
 # Runtime database
 hermes/hermes.db

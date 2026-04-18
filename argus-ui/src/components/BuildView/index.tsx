@@ -8,7 +8,9 @@ interface BuildViewProps {
   iteration: number;
   grade?: string;
   lines: OutputLine[];
-  onSubmit: (description: string) => void;
+  droppedLineCount: number;
+  projects: string[];
+  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string }) => void;
   onApprove: () => void;
   onSkip: () => void;
   onRetry: () => void;
@@ -82,11 +84,13 @@ function ProgressStrip({ state }: { state: BuildState }) {
   );
 }
 
-function OutputLog({ lines }: { lines: OutputLine[] }) {
+function OutputLog({ lines, droppedLineCount }: { lines: OutputLine[]; droppedLineCount: number }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [lines]);
+
+  const totalLines = lines.length + droppedLineCount;
 
   return (
     <div
@@ -100,6 +104,21 @@ function OutputLog({ lines }: { lines: OutputLine[] }) {
         lineHeight: 1.3,
       }}
     >
+      {droppedLineCount > 0 && (
+        <div
+          className="uppercase"
+          style={{
+            color: '#bbbbbb',
+            fontSize: 11,
+            letterSpacing: '0.15em',
+            paddingBottom: 12,
+            marginBottom: 12,
+            borderBottom: '1px solid #3a3a3a',
+          }}
+        >
+          Showing last {lines.length} of {totalLines} lines · {droppedLineCount} earlier {droppedLineCount === 1 ? 'line' : 'lines'} dropped from view
+        </div>
+      )}
       {lines.length === 0 ? (
         <p style={{ color: '#757575' }}>Output will appear here.</p>
       ) : (
@@ -121,6 +140,8 @@ export function BuildView({
   iteration,
   grade,
   lines,
+  droppedLineCount,
+  projects,
   onSubmit,
   onApprove,
   onSkip,
@@ -128,15 +149,28 @@ export function BuildView({
   onAbort,
 }: BuildViewProps) {
   const [input, setInput] = useState('');
+  // 'new' or an existing project slug to continue. Reset to 'new' whenever the project
+  // list changes (e.g. user manually deleted the folder backing the current selection).
+  const [projectSel, setProjectSel] = useState<string>('new');
+  useEffect(() => {
+    if (projectSel !== 'new' && !projects.includes(projectSel)) {
+      setProjectSel('new');
+    }
+  }, [projects, projectSel]);
   const busy = ['planning', 'building', 'auditing'].includes(state);
   const showForm = state === 'idle' || state === 'done';
   const showApproval = state === 'awaiting_approval';
   const showPaused = state === 'paused';
+  const continueSlug = projectSel === 'new' ? null : projectSel;
 
   const handleSubmit = () => {
     const text = input.trim();
     if (!text) return;
-    onSubmit(text);
+    if (continueSlug) {
+      onSubmit(text, { mode: 'continue', slug: continueSlug });
+    } else {
+      onSubmit(text);
+    }
     setInput('');
   };
 
@@ -215,7 +249,7 @@ export function BuildView({
 
       {/* Content */}
       <div className="flex-1 flex flex-col min-h-0" style={{ padding: '40px 60px', gap: 32 }}>
-        {lines.length > 0 && <OutputLog lines={lines} />}
+        {lines.length > 0 && <OutputLog lines={lines} droppedLineCount={droppedLineCount} />}
 
         {/* Approval panel */}
         {showApproval && (
@@ -290,11 +324,64 @@ export function BuildView({
         {/* Task input */}
         {showForm && (
           <div className="shrink-0">
+            <div style={{ marginBottom: 24 }}>
+              <label
+                className="uppercase"
+                htmlFor="project-selector"
+                style={{
+                  fontSize: 12,
+                  color: '#757575',
+                  letterSpacing: '0.15em',
+                  marginRight: 16,
+                }}
+              >
+                Project
+              </label>
+              <select
+                id="project-selector"
+                value={projectSel}
+                onChange={(e) => setProjectSel(e.target.value)}
+                className="bg-transparent outline-none"
+                style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: '#262626',
+                  letterSpacing: '0.05em',
+                  padding: '8px 0',
+                  borderBottom: '1px solid #262626',
+                  minWidth: 240,
+                }}
+              >
+                <option value="new">New project</option>
+                {projects.map((slug) => (
+                  <option key={slug} value={slug}>
+                    Continue: {slug}
+                  </option>
+                ))}
+              </select>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: '#757575',
+                  marginTop: 8,
+                  lineHeight: 1.3,
+                }}
+              >
+                {continueSlug
+                  ? `New work appends to the existing ${continueSlug}/ folder.`
+                  : 'Claude picks a slug and Gemini creates a new <slug>/ folder for the deliverables.'}
+              </p>
+            </div>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Describe what you want to build..."
+              placeholder={
+                continueSlug
+                  ? `What changes do you want to make to ${continueSlug}?`
+                  : 'Describe what you want to build...'
+              }
               rows={3}
               className="w-full bg-transparent outline-none resize-none"
               style={{
@@ -317,7 +404,7 @@ export function BuildView({
                 Shift + Enter for new line · Enter to submit
               </p>
               <PrimaryButton onClick={handleSubmit} disabled={!input.trim()}>
-                Start Build →
+                {continueSlug ? 'Continue Build →' : 'Start Build →'}
               </PrimaryButton>
             </div>
           </div>
