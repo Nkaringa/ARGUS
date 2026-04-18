@@ -30,13 +30,7 @@ function DiscussProgress({ state }: { state: WarzoneState }) {
     { key: 'discussing_codex', label: 'Codex' },
     { key: 'awaiting_discuss_approval', label: 'Review' },
   ];
-  const order = [
-    'idle',
-    'discussing_claude',
-    'discussing_gemini',
-    'discussing_codex',
-    'awaiting_discuss_approval',
-  ];
+  const order = ['idle', 'discussing_claude', 'discussing_gemini', 'discussing_codex', 'awaiting_discuss_approval'];
   const currentIdx = order.indexOf(state);
 
   return (
@@ -52,14 +46,14 @@ function DiscussProgress({ state }: { state: WarzoneState }) {
               className="flex-1"
               style={{
                 height: done || active ? 2 : 1,
-                background: done || active ? 'var(--color-accent)' : 'var(--color-ink-3)',
+                background: done || active ? '#1c69d4' : '#bbbbbb',
                 marginRight: 2,
               }}
             />
           );
         })}
       </div>
-      <div className="flex w-full" style={{ marginTop: 8 }}>
+      <div className="flex w-full mt-2">
         {steps.map((step) => {
           const stepIdx = order.indexOf(step.key);
           const done = currentIdx > stepIdx;
@@ -69,11 +63,10 @@ function DiscussProgress({ state }: { state: WarzoneState }) {
               key={step.key}
               className="flex-1 uppercase"
               style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                fontWeight: 500,
+                fontSize: 12,
+                fontWeight: 400,
                 letterSpacing: '0.15em',
-                color: done || active ? 'var(--color-fg-0)' : 'var(--color-fg-2)',
+                color: done || active ? '#262626' : '#bbbbbb',
               }}
             >
               {step.label}
@@ -148,11 +141,11 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
     const text = input.trim();
     if (!text) return;
     onSubmit(text);
-    setInput("");
+    setInput('');
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
@@ -164,7 +157,7 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
       <div className="shrink-0" style={{ padding: '48px 60px 32px', borderBottom: '1px solid #bbbbbb' }}>
         <div className="flex items-start justify-between">
           <div>
-            <p
+            <h1
               className="uppercase"
               style={{
                 fontFamily: 'var(--font-display)',
@@ -245,7 +238,7 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
             className="truncate"
             style={{ marginTop: 24, fontSize: 14, fontWeight: 400, color: '#757575', lineHeight: 1.3 }}
           >
-            › {idea}
+            {idea}
           </p>
         )}
       </div>
@@ -253,7 +246,7 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
       {/* Content */}
       <div className="flex-1 flex flex-col min-h-0" style={{ padding: '40px 60px', gap: 32 }}>
         {/* Explanation when idle */}
-        {state === "idle" && lines.length === 0 && (
+        {state === 'idle' && lines.length === 0 && (
           <div style={{ maxWidth: 720 }}>
             <h2
               className="uppercase"
@@ -266,7 +259,7 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
                 marginBottom: 16,
               }}
             >
-              How warzone works
+              How Warzone Works
             </h2>
             <ol style={{ fontSize: 16, fontWeight: 400, color: '#262626', lineHeight: 1.5, paddingLeft: 24 }}>
               <li>Claude frames the idea as a planner — picks a slug for the topic and writes <code>&lt;slug&gt;-WarZone.md</code></li>
@@ -278,7 +271,8 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
           </div>
         )}
 
-        {/* During busy phases: raw log. On complete: pretty-printed markdown review. */}
+        {/* During the three agent phases, stream raw log output.
+            When the discussion completes, swap to the pretty-printed markdown review. */}
         {showApproval ? (
           <DiscussionReview refreshKey={state} />
         ) : (
@@ -299,17 +293,18 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
                 marginBottom: 12,
               }}
             >
-              Discussion ready
+              Discussion Ready
             </h2>
             <p style={{ fontSize: 16, fontWeight: 400, color: '#757575', lineHeight: 1.3, marginBottom: 32 }}>
               All three agents have written their takes. Approve to keep this discussion open — submit again to add another round on the same topic, or click <em>New Discussion</em> in the header to archive and switch topics.
             </p>
-            <div className="flex items-center" style={{ gap: 16 }}>
+            <div className="flex items-center" style={{ gap: 24 }}>
               <button
                 onClick={onApprove}
+                className="uppercase bg-[#1c69d4] text-white border border-[#1c69d4] hover:bg-[#0653b6] hover:border-[#0653b6] transition-colors"
                 style={{
-                  fontSize: 14,
-                  fontWeight: 600,
+                  fontSize: 16,
+                  fontWeight: 700,
                   lineHeight: 1.2,
                   letterSpacing: '0.05em',
                   padding: '16px 32px',
@@ -319,7 +314,7 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
               </button>
               <button
                 onClick={onAbort}
-                className="uppercase"
+                className="uppercase text-[#262626] hover:text-[#1c69d4] transition-colors"
                 style={{
                   fontSize: 16,
                   fontWeight: 700,
@@ -348,7 +343,7 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
                   : 'What do you want to discuss? (e.g. build a real-time dashboard for Argus)'
               }
               rows={3}
-              className="w-full outline-none resize-none"
+              className="w-full bg-transparent outline-none resize-none"
               style={{
                 fontFamily: 'var(--font-body)',
                 fontSize: 16,
@@ -361,10 +356,7 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
               onFocus={(e) => (e.currentTarget.style.borderBottom = '2px solid #1c69d4')}
               onBlur={(e) => (e.currentTarget.style.borderBottom = '1px solid #262626')}
             />
-            <div
-              className="flex items-center justify-between"
-              style={{ marginTop: 20 }}
-            >
+            <div className="flex items-center justify-between" style={{ marginTop: 24 }}>
               <p
                 className="uppercase"
                 style={{ fontSize: 12, color: '#757575', letterSpacing: '0.15em' }}
@@ -374,9 +366,14 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
               <button
                 onClick={handleSubmit}
                 disabled={!input.trim()}
+                className={
+                  !input.trim()
+                    ? 'uppercase border border-[#bbbbbb] text-[#bbbbbb] cursor-not-allowed bg-transparent'
+                    : 'uppercase bg-[#1c69d4] text-white border border-[#1c69d4] hover:bg-[#0653b6] hover:border-[#0653b6] transition-colors'
+                }
                 style={{
-                  fontSize: 14,
-                  fontWeight: 600,
+                  fontSize: 16,
+                  fontWeight: 700,
                   lineHeight: 1.2,
                   letterSpacing: '0.05em',
                   padding: '16px 32px',
