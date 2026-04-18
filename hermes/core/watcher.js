@@ -2,30 +2,30 @@ const chokidar = require('chokidar');
 const fs = require('fs');
 const path = require('path');
 const { publish } = require('./events');
-const { parseTaskFile, parseWarzoneFile } = require('./archive');
 
 const WORK_DIR = process.env.WORK_DIR;
+const PLAN_FILE          = path.join(WORK_DIR, 'Plan.md');
+const BUILD_LOG_FILE     = path.join(WORK_DIR, 'Build-Log.md');
+const BUILD_FEEDBACK_FILE = path.join(WORK_DIR, 'Build-Feedback.md');
+const WARZONE_FILE       = path.join(WORK_DIR, 'WarZone.md');
 
-// Build pipeline files: <slug>-Plan.md, <slug>-Build-Log.md, <slug>-Build-Feedback.md.
-// Warzone discussion file: <slug>-WarZone.md.
-// All globs are top-level only — Build-History/ and WarZone-History/ are excluded.
-const PLAN_GLOB           = path.join(WORK_DIR, '*-Plan.md');
-const BUILD_LOG_GLOB      = path.join(WORK_DIR, '*-Build-Log.md');
-const BUILD_FEEDBACK_GLOB = path.join(WORK_DIR, '*-Build-Feedback.md');
-const WARZONE_GLOB        = path.join(WORK_DIR, '*-WarZone.md');
+const ITERATION_PATTERN        = /^### Iteration/m;
+const GRADE_PATTERN            = /\*\*Audit Grade:\*\*\s*([ABCF])/;
+const PLAN_STATUS_PATTERN      = /\*\*Plan Status:\*\*\s*READY/;
 
-const ITERATION_PATTERN   = /^### Iteration/m;
-const GRADE_PATTERN       = /\*\*Audit Grade:\*\*\s*([ABCF])/;
-const PLAN_STATUS_PATTERN = /\*\*Plan Status:\*\*\s*READY/;
-
+// Warzone three-phase markers
 const CLAUDE_PLAN_DONE_PATTERN  = /\*\*Planner Status:\*\*\s*DONE/;
 const GEMINI_BUILD_DONE_PATTERN = /\*\*Builder Status:\*\*\s*DONE/;
 const CODEX_AUDIT_DONE_PATTERN  = /\*\*Auditor Status:\*\*\s*READY TO BUILD/;
 
-// Per-file content tracking. Keyed by absolute filepath. Shared across build + warzone watchers.
-// Agents may rewrite entire files (read-modify-write), which breaks byte-offset deltas;
-// storing full content lets us compute the true new portion regardless.
-const lastContent = new Map();
+// Track last known content — not byte offsets.
+// Agents may rewrite entire files (read-modify-write), which breaks byte-offset deltas.
+// By storing the full content, we can always compute the true new portion,
+// even if the file was rewritten with the same prefix.
+let lastPlanContent = '';
+let lastBuildLogContent = '';
+let lastBuildFeedbackContent = '';
+let lastWarzoneContent = '';
 
 function readFile(filePath) {
     try {
@@ -35,43 +35,36 @@ function readFile(filePath) {
     }
 }
 
+// Extract the new content by stripping the known prefix.
+// If the file was rewritten and old content changed (different prefix),
+// fall back to scanning from the first point of difference.
 function getNewContent(current, lastKnown) {
     if (current === lastKnown) return '';
     if (current.startsWith(lastKnown)) {
         return current.slice(lastKnown.length);
     }
+    // File was rewritten — find where old and new diverge.
+    // Only scan from the divergence point forward.
     let i = 0;
     const minLen = Math.min(current.length, lastKnown.length);
     while (i < minLen && current[i] === lastKnown[i]) i++;
     return current.slice(i);
 }
 
-// Seed last-known content for any matching files already on disk at startup.
-// Live workspace should normally be empty (submitTask archives before invoking the planner;
-// newDiscussion archives before the next warzone slug is created), but a mid-task restart
-// could leave files in place — this prevents replay of pre-existing content.
-function seedExistingFiles(matchPredicate) {
-    let entries;
-    try {
-        entries = fs.readdirSync(WORK_DIR);
-    } catch {
-        return;
-    }
-    for (const name of entries) {
-        if (!matchPredicate(name)) continue;
-        const fp = path.join(WORK_DIR, name);
-        lastContent.set(fp, readFile(fp));
-    }
-}
-
+// mode: 'build'   → watches Plan.md + Build-Log.md + Build-Feedback.md
+// mode: 'warzone' → watches WarZone.md only
 function startWatcher(mode = 'build') {
     const filesToWatch = mode === 'warzone'
-        ? [WARZONE_GLOB]
-        : [PLAN_GLOB, BUILD_LOG_GLOB, BUILD_FEEDBACK_GLOB];
+        ? [WARZONE_FILE]
+        : [PLAN_FILE, BUILD_LOG_FILE, BUILD_FEEDBACK_FILE];
 
-    seedExistingFiles(mode === 'warzone'
-        ? (name) => parseWarzoneFile(name) !== null
-        : (name) => parseTaskFile(name) !== null);
+    // Seed with current content so we only process content written after startup.
+    // Plan.md is deleted by submitTask before each task — so at steady state this
+    // seed is '', and any subsequent Claude write is unambiguously a new plan.
+    if (fs.existsSync(PLAN_FILE))           lastPlanContent          = readFile(PLAN_FILE);
+    if (fs.existsSync(BUILD_LOG_FILE))      lastBuildLogContent      = readFile(BUILD_LOG_FILE);
+    if (fs.existsSync(BUILD_FEEDBACK_FILE)) lastBuildFeedbackContent = readFile(BUILD_FEEDBACK_FILE);
+    if (fs.existsSync(WARZONE_FILE))        lastWarzoneContent       = readFile(WARZONE_FILE);
 
     const watcher = chokidar.watch(filesToWatch, {
         persistent: true,
@@ -80,86 +73,73 @@ function startWatcher(mode = 'build') {
     });
 
     const handleBuildFile = (filePath) => {
-        const filename = path.basename(filePath);
-        const parsed = parseTaskFile(filename);
-        if (!parsed) return; // unexpected — glob matched something we don't parse
-
         const current = readFile(filePath);
-        const previous = lastContent.get(filePath) || '';
-        if (current === previous) return;
 
-        const delta = getNewContent(current, previous);
-        lastContent.set(filePath, current);
-
-        if (parsed.base === 'Plan.md') {
-            // Planner overwrites their plan file. Content-change + pattern-match = ready.
+        if (filePath === PLAN_FILE && current !== lastPlanContent) {
+            lastPlanContent = current;
+            // Plan.md is deleted before each task by submitTask and then written fresh
+            // by the planner. Content-change + pattern-match = the plan is ready.
             // awaitWriteFinish coalesces multi-chunk writes, so single-fire is guaranteed.
             if (PLAN_STATUS_PATTERN.test(current)) {
-                console.log(`[watcher] ${filename} — plan ready`);
-                publish('plan.completed', { file: filename });
+                console.log('[watcher] Plan.md — plan ready');
+                publish('plan.completed', {});
             }
-            return;
         }
 
-        if (parsed.base === 'Build-Log.md') {
+        if (filePath === BUILD_LOG_FILE && current !== lastBuildLogContent) {
+            const delta = getNewContent(current, lastBuildLogContent);
+            lastBuildLogContent = current;
             if (delta && ITERATION_PATTERN.test(delta)) {
-                console.log(`[watcher] ${filename} — new iteration appended`);
-                publish('agent.completed', { role: 'build', file: filename });
+                console.log('[watcher] Build-Log.md — new iteration appended');
+                publish('agent.completed', { role: 'build' });
             }
-            return;
         }
 
-        if (parsed.base === 'Build-Feedback.md') {
-            if (!delta) return;
-            const match = delta.match(GRADE_PATTERN);
-            if (match) {
-                console.log(`[watcher] ${filename} — grade: ${match[1]}`);
-                publish('grade.received', { grade: match[1], file: filename });
+        if (filePath === BUILD_FEEDBACK_FILE && current !== lastBuildFeedbackContent) {
+            const delta = getNewContent(current, lastBuildFeedbackContent);
+            lastBuildFeedbackContent = current;
+            if (delta) {
+                const match = delta.match(GRADE_PATTERN);
+                if (match) {
+                    console.log(`[watcher] Build-Feedback.md — grade: ${match[1]}`);
+                    publish('grade.received', { grade: match[1] });
+                }
             }
         }
     };
 
     const handleWarzoneFile = (filePath) => {
-        const filename = path.basename(filePath);
-        const slug = parseWarzoneFile(filename);
-        if (!slug) return;
-
         const current = readFile(filePath);
-        const previous = lastContent.get(filePath) || '';
-        if (current === previous) return;
-
-        const delta = getNewContent(current, previous);
-        lastContent.set(filePath, current);
+        if (current === lastWarzoneContent) return;
+        const delta = getNewContent(current, lastWarzoneContent);
+        lastWarzoneContent = current;
         if (!delta) return;
-
         // Order matters — check from most-advanced phase to earliest.
+        // A single write may contain multiple markers; prefer the latest one.
         if (CODEX_AUDIT_DONE_PATTERN.test(delta)) {
-            console.log(`[watcher] ${filename} — Codex audit done (discussion complete)`);
-            publish('discuss.complete', { file: filename });
+            console.log('[watcher] WarZone.md — Codex audit done (discussion complete)');
+            publish('discuss.complete', {});
             return;
         }
         if (GEMINI_BUILD_DONE_PATTERN.test(delta)) {
-            console.log(`[watcher] ${filename} — Gemini build take done`);
-            publish('discuss.gemini_done', { file: filename });
+            console.log('[watcher] WarZone.md — Gemini build take done');
+            publish('discuss.gemini_done', {});
             return;
         }
         if (CLAUDE_PLAN_DONE_PATTERN.test(delta)) {
-            console.log(`[watcher] ${filename} — Claude plan done`);
-            publish('discuss.claude_done', { file: filename });
+            console.log('[watcher] WarZone.md — Claude plan done');
+            publish('discuss.claude_done', {});
         }
     };
 
-    const dispatch = (fp) => {
-        const name = path.basename(fp);
-        if (parseWarzoneFile(name)) return handleWarzoneFile(fp);
-        if (parseTaskFile(name)) return handleBuildFile(fp);
-    };
-    watcher.on('add', dispatch);
-    watcher.on('change', dispatch);
+    // 'add' fires when a file is created after watching starts
+    // 'change' fires for subsequent edits
+    watcher.on('add',    (fp) => fp === WARZONE_FILE ? handleWarzoneFile(fp) : handleBuildFile(fp));
+    watcher.on('change', (fp) => fp === WARZONE_FILE ? handleWarzoneFile(fp) : handleBuildFile(fp));
 
     const watchLabel = mode === 'warzone'
-        ? '*-WarZone.md'
-        : '*-Plan.md + *-Build-Log.md + *-Build-Feedback.md';
+        ? 'WarZone.md'
+        : 'Plan.md + Build-Log.md + Build-Feedback.md';
     console.log(`[watcher:${mode}] Watching ${watchLabel}`);
     return watcher;
 }
