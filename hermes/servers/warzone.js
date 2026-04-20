@@ -12,12 +12,19 @@ const { startWarzoneWorkflow, submitDiscuss, sendDiscussApproval, newDiscussion,
 const { corsMiddleware, authMiddleware, wsAuth } = require('../core/auth');
 const { ensureRoleDocs } = require('../core/role-docs');
 const { listDiscussionHistory, readDiscussionHistory } = require('../core/archive');
+const { validateEnv } = require('../core/env');
+
+validateEnv('warzone', {
+    required: ['WORK_DIR'],
+    recommend: ['CLAUDE_SESSION_ID', 'CODEX_SESSION_ID', 'GEMINI_SESSION_ID'],
+});
 
 const PORT = process.env.WARZONE_PORT || 3003;
 const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 
 const app = express();
-app.use(express.json());
+// POST /discuss carries an idea string; no large payloads expected. 64 KB cap.
+app.use(express.json({ limit: '64kb' }));
 app.use(corsMiddleware);
 app.use(authMiddleware);
 

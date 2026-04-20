@@ -52,8 +52,8 @@ hermes/
 ├── core/                   ← shared infrastructure
 │   ├── events.js           NATS pub/sub (connect, publish, subscribe)
 │   ├── agents.js           Agent runner (buildCommand, runAgent)
-│   ├── agents.json         Command templates for 6 agent keys
-│   ├── archive.js          Build-History move on each submitTask + parseTaskFile helper
+│   ├── agents.json         Command templates for 7 agent keys (3 build + 3 warzone + 1 chat-specific Gemini)
+│   ├── archive.js          archiveLiveFiles (on task completion), archiveWarzoneFile, findLiveWarzoneSlug, listProjectFolders, listBuildHistory, listDiscussionHistory, readBuildHistory, readDiscussionHistory, parseTaskFile, parseWarzoneFile, isSafeSlug
 │   ├── auth.js             Shared-secret auth + CORS
 │   ├── db.js               SQLite (logEvent, createTask, completeTask, getHistory)
 │   └── watcher.js          File watcher (*-Plan.md, *-Build-Log.md, *-Build-Feedback.md, *-WarZone.md)
@@ -80,23 +80,24 @@ hermes/
 ## `.env` Reference
 
 ```
-WORK_DIR=/Users/.../NK-Base
-CLAUDE_SESSION_ID=<uuid>
-GEMINI_SESSION_ID=<uuid>
-CODEX_SESSION_ID=<uuid>
+WORK_DIR=/Users/.../your-project-folder
+CLAUDE_SESSION_ID=<uuid>         ← seeded from WORK_DIR
+GEMINI_SESSION_ID=<uuid>         ← seeded from WORK_DIR (build + warzone Gemini)
+GEMINI_CHAT_SESSION_ID=<uuid>    ← seeded from CHAT_DIR (chat Gemini only)
+CODEX_SESSION_ID=<uuid>          ← seeded from WORK_DIR
 CHAT_PORT=3001
 BUILD_PORT=3002
 WARZONE_PORT=3003
-CHAT_DIR=/tmp/argus-chat    ← chat cwd (no .gemini/ here = Gemini won't write to Build-Log.md)
+CHAT_DIR=/tmp/argus-chat    ← chat Gemini cwd (isolated role doc, separate session)
 ```
 
-All three session IDs are seeded manually by the user. Hermes never creates sessions. See [Session Management](#session-management) below.
+All four session IDs are seeded manually by the user. Hermes never creates sessions. Gemini needs two IDs because the CLI scopes session storage by cwd — chat runs from `CHAT_DIR` and build runs from `WORK_DIR`, so each cwd needs its own seeded UUID. See [Session Management](#session-management) below.
 
 ---
 
 ## agents.json — Config Reference
 
-Six agent keys, one per (role × pipeline) slot. All six follow the same template pattern:
+Seven agent keys, one per (role × pipeline) slot. All seven follow the same template pattern:
 
 ```json
 {
@@ -105,9 +106,12 @@ Six agent keys, one per (role × pipeline) slot. All six follow the same templat
   "codex_auditor":   { "name": "Codex",  "role": "audit",          "command": "codex exec resume {CODEX_SESSION_ID} --full-auto --skip-git-repo-check \"{task}\"", ... },
   "discuss_builder": { "name": "Gemini", "role": "discuss_build",  "command": "gemini --resume {GEMINI_SESSION_ID} -p \"{task}\" -y", ... },
   "discuss_planner": { "name": "Claude", "role": "discuss_plan",   "command": "claude --resume {CLAUDE_SESSION_ID} --allowedTools Edit Write Read Glob Grep -p \"{task}\" < /dev/null", ... },
-  "discuss_codex":   { "name": "Codex",  "role": "discuss_audit",  "command": "codex exec resume {CODEX_SESSION_ID} --full-auto --skip-git-repo-check \"{task}\"", ... }
+  "discuss_codex":   { "name": "Codex",  "role": "discuss_audit",  "command": "codex exec resume {CODEX_SESSION_ID} --full-auto --skip-git-repo-check \"{task}\"", ... },
+  "chat_builder":    { "name": "Gemini", "role": "chat",           "command": "gemini --resume {GEMINI_CHAT_SESSION_ID} -p \"{task}\" -y", ... }
 }
 ```
+
+`chat_builder` is the dedicated chat-mode Gemini key (added 2026-04-17 to fix Bug F — Gemini CLI scopes session storage by cwd, and chat runs from `CHAT_DIR` which needs its own seeded UUID). Chat routing in `hermes/servers/chat.js` maps incoming `agent === 'builder'` requests → `chat_builder` before invoking `runAgent`. Claude and Codex chat call their build-side keys directly because their cwd matches their seed location.
 
 **Substitution tokens** (resolved in [core/agents.js](core/agents.js) `buildCommand`):
 
@@ -116,6 +120,7 @@ Six agent keys, one per (role × pipeline) slot. All six follow the same templat
 | `"{task}"` | Shell-escaped (single-quoted) task prompt |
 | `{CLAUDE_SESSION_ID}` | `process.env.CLAUDE_SESSION_ID` |
 | `{GEMINI_SESSION_ID}` | `process.env.GEMINI_SESSION_ID` |
+| `{GEMINI_CHAT_SESSION_ID}` | `process.env.GEMINI_CHAT_SESSION_ID` |
 | `{CODEX_SESSION_ID}` | `process.env.CODEX_SESSION_ID` |
 | `{WORK_DIR}` | `process.env.WORK_DIR` |
 
@@ -129,15 +134,16 @@ Six agent keys, one per (role × pipeline) slot. All six follow the same templat
 
 ## Session Management
 
-Every agent invocation is `<cli> --resume <UUID>` (or the Codex equivalent, `codex exec resume <UUID>`). The user seeds all three UUIDs in `.env`. There is no runtime session capture, no "first call vs subsequent call" branching — every call is symmetric.
+Every agent invocation is `<cli> --resume <UUID>` (or the Codex equivalent, `codex exec resume <UUID>`). The user seeds all four UUIDs in `.env`. There is no runtime session capture, no "first call vs subsequent call" branching — every call is symmetric.
 
 | Agent | Command pattern | Seeding procedure |
 |---|---|---|
 | Claude | `claude --resume {CLAUDE_SESSION_ID} …` | In `WORK_DIR`: `claude` → send a small prompt → `/exit` → copy resume UUID |
-| Gemini | `gemini --resume {GEMINI_SESSION_ID} …` | In `WORK_DIR`: `gemini` → send a small prompt → `/exit` → copy from `To resume this session: gemini --resume <UUID>` line |
+| Gemini (build + warzone) | `gemini --resume {GEMINI_SESSION_ID} …` | In `WORK_DIR`: `gemini` → send a small prompt → `/exit` → copy from `To resume this session: gemini --resume <UUID>` line |
+| Gemini (chat) | `gemini --resume {GEMINI_CHAT_SESSION_ID} …` | `mkdir -p /tmp/argus-chat && cd /tmp/argus-chat && gemini` → send a small prompt → `/exit` → copy the UUID. Separate from the build-side UUID because Gemini CLI scopes session storage by cwd. |
 | Codex | `codex exec resume {CODEX_SESSION_ID} …` | `codex exec --full-auto --skip-git-repo-check -C "$WORK_DIR" "hello"` → copy UUID from stdout header. Top-level `codex resume` is TTY-only and won't work. |
 
-Each agent uses **one session across all three pipelines** (chat, build, warzone). Gemini-chat differs only in `cwd` (runs in `CHAT_DIR` so it doesn't pollute Build-Log.md), not session.
+Claude and Codex each use **one session across all pipelines** (chat, build, warzone) because their cwd always matches their seed location (`WORK_DIR`). Gemini is the exception: it uses **two sessions** — `GEMINI_SESSION_ID` for build + warzone (seeded from `WORK_DIR`) and `GEMINI_CHAT_SESSION_ID` for chat (seeded from `CHAT_DIR`). Without the second session, Gemini chat fails with exit 42 because the CLI can't find the session store under the cwd it's spawned with.
 
 **Rotating context.** When starting an unrelated task, seed fresh UUIDs in `.env` and restart Hermes. No server-side state needs clearing — rotation is purely an `.env` edit.
 

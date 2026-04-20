@@ -10,13 +10,30 @@ const path = require('path');
 const { connectNATS, subscribe } = require('../core/events');
 const { runAgent } = require('../core/agents');
 const { corsMiddleware, authMiddleware, wsAuth } = require('../core/auth');
+const { validateEnv } = require('../core/env');
+
+validateEnv('chat', {
+    required: ['WORK_DIR'],
+    recommend: ['CLAUDE_SESSION_ID', 'CODEX_SESSION_ID', 'GEMINI_CHAT_SESSION_ID'],
+});
 
 const PORT = process.env.CHAT_PORT || 3001;
 const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 const WORK_DIR = process.env.WORK_DIR;
 // Gemini runs in CHAT_DIR — separate from WORK_DIR so it doesn't load the build GEMINI.md
-// We write our own GEMINI.md here with project context (but no logging instructions)
-const CHAT_DIR = process.env.CHAT_DIR || os.homedir();
+// We write our own GEMINI.md here with project context (but no logging instructions).
+// Default to a dedicated tmp dir rather than os.homedir() — the previous homedir fallback
+// would clobber the user's real ~/.gemini/GEMINI.md (the one Gemini CLI loads for every
+// unscoped invocation). If CHAT_DIR is explicitly set to homedir, refuse to boot.
+const CHAT_DIR = process.env.CHAT_DIR || path.join('/tmp', 'argus-chat');
+if (path.resolve(CHAT_DIR) === path.resolve(os.homedir())) {
+    console.error(
+        `[chat] Refusing to start: CHAT_DIR is set to the home directory (${CHAT_DIR}).\n` +
+        '       That would overwrite your global ~/.gemini/GEMINI.md. ' +
+        'Set CHAT_DIR to a dedicated path (e.g. /tmp/argus-chat).',
+    );
+    process.exit(1);
+}
 
 function ensureChatGeminiMd() {
     const geminiDir = path.join(CHAT_DIR, '.gemini');
@@ -52,7 +69,10 @@ You are in direct chat mode. You are NOT in a build pipeline.
 }
 
 const app = express();
-app.use(express.json());
+// POST /chat includes a prompt + recent history (last 10 messages, each typically a
+// few hundred chars). 256 KB is ~5x the expected worst case and still small enough
+// to reject runaway payloads.
+app.use(express.json({ limit: '256kb' }));
 app.use(corsMiddleware);
 app.use(authMiddleware);
 

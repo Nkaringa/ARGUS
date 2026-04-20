@@ -1,7 +1,7 @@
 const { createMachine, createActor } = require('xstate');
 const { subscribe } = require('../core/events');
 const { runAgent } = require('../core/agents');
-const { archiveWarzoneFile, findLiveWarzoneSlug } = require('../core/archive');
+const { archiveWarzoneFile, findLiveWarzoneSlug, isValidTaskSlug } = require('../core/archive');
 const { logEvent } = require('../core/db');
 const fs = require('fs');
 const path = require('path');
@@ -224,32 +224,50 @@ function startWarzoneWorkflow() {
 
     subscribe('discuss.claude_done', (payload) => {
         if (service.getSnapshot().value !== 'discussing_claude') return;
-        // First submit on a fresh discussion: capture the slug Claude chose.
-        // Continuing submits: slug is already set; nothing to capture.
         if (!currentDiscussionSlug && payload && payload.file) {
+            // First submit on a fresh discussion: capture the slug Claude chose.
             const m = payload.file.match(/^(.+)-WarZone\.md$/);
-            if (m) {
-                currentDiscussionSlug = m[1];
-                console.log(`[warzone] Slug for this discussion: ${currentDiscussionSlug}`);
-            } else {
+            if (!m) {
                 console.warn('[warzone] discuss.claude_done with unparseable file:', payload.file);
                 service.send({ type: 'ABORT' });
+                return;
+            }
+            // Claude is untrusted input here. Reject any slug that wouldn't survive the
+            // kebab-case contract — else it poisons every subsequent prompt and path.
+            if (!isValidTaskSlug(m[1])) {
+                console.warn(`[warzone] Planner produced invalid slug "${m[1]}" — aborting.`);
+                logEvent('discuss.failed', { role: 'claude', error: `invalid slug: ${m[1]}` });
+                service.send({ type: 'ABORT' });
+                return;
+            }
+            currentDiscussionSlug = m[1];
+            console.log(`[warzone] Slug for this discussion: ${currentDiscussionSlug}`);
+        } else if (currentDiscussionSlug) {
+            // Continuing submit: slug is already set; reject events for a different file.
+            if (payload && payload.file && payload.file !== `${currentDiscussionSlug}-WarZone.md`) {
+                console.warn(`[warzone] Ignoring discuss.claude_done for unrelated file: ${payload.file}`);
                 return;
             }
         }
         service.send({ type: 'CLAUDE_PLAN_DONE' });
     });
 
-    subscribe('discuss.gemini_done', () => {
-        if (service.getSnapshot().value === 'discussing_gemini') {
-            service.send({ type: 'GEMINI_BUILD_DONE' });
+    subscribe('discuss.gemini_done', (payload) => {
+        if (service.getSnapshot().value !== 'discussing_gemini') return;
+        if (!currentDiscussionSlug || !payload || payload.file !== `${currentDiscussionSlug}-WarZone.md`) {
+            console.warn(`[warzone] Ignoring discuss.gemini_done for unrelated file: ${payload && payload.file}`);
+            return;
         }
+        service.send({ type: 'GEMINI_BUILD_DONE' });
     });
 
-    subscribe('discuss.complete', () => {
-        if (service.getSnapshot().value === 'discussing_codex') {
-            service.send({ type: 'DISCUSS_COMPLETE' });
+    subscribe('discuss.complete', (payload) => {
+        if (service.getSnapshot().value !== 'discussing_codex') return;
+        if (!currentDiscussionSlug || !payload || payload.file !== `${currentDiscussionSlug}-WarZone.md`) {
+            console.warn(`[warzone] Ignoring discuss.complete for unrelated file: ${payload && payload.file}`);
+            return;
         }
+        service.send({ type: 'DISCUSS_COMPLETE' });
     });
 
     console.log('[warzone] State machine started');
