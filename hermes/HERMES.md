@@ -31,7 +31,6 @@ For full first-time setup (prerequisites, project folder, session seeding, etc.)
 npm install
 
 # Start NATS + all 3 Hermes servers + Argus UI
-nats-server &
 npm run dev
 
 # Or start individually from the repo root
@@ -231,7 +230,7 @@ Two SQLite tables:
 
 | Symptom | Fix |
 |---|---|
-| NATS connection refused | `nats-server` is not running. `nats-server &`. |
+| NATS connection refused | Only happens when starting servers individually (`npm run dev:chat/build/warzone`). Use `npm run dev` which auto-starts NATS, or run `nats-server &` first. |
 | Claude session expired / invalid UUID | `claude` in terminal → `/exit` → update `CLAUDE_SESSION_ID` in `.env`. |
 | Gemini session expired / invalid UUID | `gemini` in terminal → `/exit` → copy UUID from `To resume this session:` line → update `GEMINI_SESSION_ID`. |
 | Codex session expired | `codex exec --full-auto --skip-git-repo-check -C "$WORK_DIR" "hello"` → copy UUID from stdout → update `CODEX_SESSION_ID`. |
