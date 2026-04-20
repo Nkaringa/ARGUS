@@ -1,6 +1,6 @@
 # hermes — workspace-local ignores (workspace deps are hoisted to root node_modules)
 
-# Environment — contains seeded session UUIDs and optional API_KEY
+# Environment — contains WORK_DIR and optional API_KEY
 .env
 .env.local
 .env.*.local

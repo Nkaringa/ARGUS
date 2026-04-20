@@ -32,10 +32,6 @@ function buildCommand(agentKey, task) {
 
     const cmd = agent.command
         .replace('"{task}"', shellEscape(task))
-        .replace('{CLAUDE_SESSION_ID}', process.env.CLAUDE_SESSION_ID || '')
-        .replace('{CODEX_SESSION_ID}', process.env.CODEX_SESSION_ID || '')
-        .replace('{GEMINI_CHAT_SESSION_ID}', process.env.GEMINI_CHAT_SESSION_ID || '')
-        .replace('{GEMINI_SESSION_ID}', process.env.GEMINI_SESSION_ID || '')
         .replace('{WORK_DIR}', WORK_DIR || '');
 
     return { cmd, agent };

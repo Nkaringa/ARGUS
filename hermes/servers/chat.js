@@ -14,7 +14,6 @@ const { validateEnv } = require('../core/env');
 
 validateEnv('chat', {
     required: ['WORK_DIR'],
-    recommend: ['CLAUDE_SESSION_ID', 'CODEX_SESSION_ID', 'GEMINI_CHAT_SESSION_ID'],
 });
 
 const PORT = process.env.CHAT_PORT || 3001;
@@ -60,10 +59,16 @@ You are in direct chat mode. You are NOT in a build pipeline.
 - \`WarZone-History/\` — archive of past discussion topics; each subfolder is one closed discussion
 
 ## Rules
-- When the user asks about files or code, look in the project root above
-- Do NOT write to any \`*-Plan.md\`, \`*-Build-Log.md\`, \`*-Build-Feedback.md\`, or \`*-WarZone.md\` file
-- Do NOT touch the Build-History/ or WarZone-History/ folders
-- Do NOT modify anything in hermes/
+- ANSWER THE USER'S QUESTION DIRECTLY. This is casual chat, not a task assignment. Keep responses concise and conversational.
+- Do NOT read project files proactively. Only read files when the user explicitly names a specific file or folder in the project and asks you to examine it. General questions ("what do you think about X") are answered from your own knowledge, not from project files — even if the project contains files related to X.
+- Do NOT write to any \`*-Plan.md\`, \`*-Build-Log.md\`, \`*-Build-Feedback.md\`, or \`*-WarZone.md\` file.
+- Do NOT touch the Build-History/ or WarZone-History/ folders.
+- Do NOT modify anything in hermes/.
+
+## Examples
+- User: "what is prompt caching?" → answer from your own knowledge. Do not read any files.
+- User: "what's in my landing-page project?" → the user named a specific folder. Read \`landing-page/\` and summarize.
+- User: "look at the plan for token-optimization" → the user named a specific file context. Read the relevant file and report on it.
 `);
     console.log(`[chat] Wrote project context to ${geminiMd}`);
 }
@@ -117,13 +122,12 @@ app.post('/chat', (req, res) => {
         ? `${historyText}\n\nHuman: ${prompt.trim()}`
         : prompt.trim();
 
-    // Gemini chat runs in CHAT_DIR (separate role doc, no Build-Log.md pollution).
-    // Gemini CLI scopes session storage by cwd, so chat needs its own session UUID
-    // seeded from CHAT_DIR — see GEMINI_CHAT_SESSION_ID. The agent key `chat_builder`
-    // resolves to that UUID; `builder` would resolve to the build-side UUID and fail
-    // with exit 42 because the session wouldn't exist in CHAT_DIR's store.
-    // Claude + Codex chat use the build-side agent keys directly — their cwd matches
-    // their seed location (both WORK_DIR), so no separate session is needed.
+    // Gemini chat runs in CHAT_DIR (not WORK_DIR) so it loads a chat-specific
+    // .gemini/GEMINI.md — the build-mode role doc tells Gemini to log every turn
+    // to Build-Log.md, which would corrupt the build pipeline's files if chat used it.
+    // The dedicated `chat_builder` agent key exists so we can route here cleanly.
+    // Claude and Codex don't need the split — their cwd is WORK_DIR and their role
+    // docs already handle chat-vs-build context.
     const agentKey = agent === 'builder' ? 'chat_builder' : agent;
     const agentCwd = agent === 'builder' ? CHAT_DIR : process.env.WORK_DIR;
 
@@ -154,14 +158,5 @@ app.post('/chat', (req, res) => {
     server.listen(PORT, BIND_HOST, () => {
         console.log(`[chat] Running at http://${BIND_HOST}:${PORT}`);
         console.log(`[chat] Agent cwd: ${CHAT_DIR}`);
-        // Loud diagnostic if Gemini chat won't work — prevents users from chasing
-        // a misleading "exit 42" later when the real cause is an unseeded env var.
-        if (!process.env.GEMINI_CHAT_SESSION_ID) {
-            console.warn(
-                '[chat] GEMINI_CHAT_SESSION_ID is not set — Gemini chat will fail until you seed it.\n' +
-                '       To seed: mkdir -p ' + CHAT_DIR + ' && cd ' + CHAT_DIR + ' && gemini\n' +
-                '       (have one exchange, /exit, copy the UUID, paste into hermes/.env, restart hermes)',
-            );
-        }
     });
 })();

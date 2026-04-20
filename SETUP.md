@@ -80,47 +80,19 @@ Either way works. The subdirectory layout above is just the simplest default.
 
 ### 4. Configure `hermes/.env`
 
-Copy the template:
+Copy the template and set `WORK_DIR` to the absolute path of the project folder you created in step 3:
 
 ```bash
 cp hermes/.env.example hermes/.env
 ```
 
-Required fields:
-
 ```env
-WORK_DIR=/absolute/path/to/argus/Portfolio   # the subfolder you just created
-CLAUDE_SESSION_ID=<uuid>
-GEMINI_SESSION_ID=<uuid>
-CODEX_SESSION_ID=<uuid>
+WORK_DIR=/absolute/path/to/argus/Portfolio
 ```
 
-Seed the four session UUIDs next, then come back and paste them in.
+That's the only required field. Everything else in `.env.example` has sensible defaults (ports, `CHAT_DIR`, auth, CORS). No session UUIDs to seed — each agent is invoked fresh per task, and prompts carry the full context the agent needs.
 
-### 5. Seed the four session UUIDs
-
-Each agent is always invoked with `--resume <UUID>`. Hermes **never creates a session on its own** — you seed each UUID manually. Sessions then persist across restarts and can be rotated when you want fresh context.
-
-> **⚠ Important — where you seed from matters.** Each CLI stores its session data **relative to the directory you run it in**. When Hermes later spawns an agent, it spawns it with a specific cwd — so if you seed a UUID from a different folder, the agent will look for the session in the wrong store and come up empty (Gemini exits with code 42; Claude/Codex error out).
->
-> **Three of the four agents are seeded from your `WORK_DIR`. Gemini chat is the exception — it's seeded from `CHAT_DIR`** (default `/tmp/argus-chat`) because Hermes spawns chat-mode Gemini there to keep its role doc isolated from the build pipeline. The seeding command for that one bakes in a `mkdir -p` so the directory exists.
->
-> For the WORK_DIR commands below, **`$WORK_DIR` is a placeholder** — `.env` values aren't exported to your shell, so either replace it with the literal path (e.g. `cd /Users/you/Projects/argus/Portfolio`) or `export WORK_DIR=...` in your shell once before running the commands.
-
-| Agent | How to seed |
-|---|---|
-| **Claude** | `cd $WORK_DIR && claude` → send one message → `/exit` → copy the UUID from the "resume this session" hint. Paste as `CLAUDE_SESSION_ID`. |
-| **Gemini (build + warzone)** | `cd $WORK_DIR && gemini` → send one message → `/exit` → the last stdout line prints `To resume this session: gemini --resume <UUID>`. Paste the UUID as `GEMINI_SESSION_ID`. |
-| **Gemini (chat)** | `mkdir -p /tmp/argus-chat && cd /tmp/argus-chat && gemini` → send one message → `/exit` → copy the UUID from the same `To resume this session:` line. Paste as `GEMINI_CHAT_SESSION_ID`. (If you changed `CHAT_DIR` in `.env`, substitute it for `/tmp/argus-chat`.) |
-| **Codex** | `cd $WORK_DIR && codex exec --full-auto --skip-git-repo-check "hello"` → the UUID is printed in the stdout header as `session id: <UUID>`. Paste as `CODEX_SESSION_ID`. |
-
-**Tip:** before running the WORK_DIR commands, `export WORK_DIR=/your/absolute/path` in your shell once — then `cd $WORK_DIR` will work without pasting the full path each time.
-
-**Why Gemini needs two session IDs:** Gemini CLI scopes session storage by cwd. The build pipeline runs Gemini from `WORK_DIR` (where your `.gemini/GEMINI.md` says "always log to Build-Log.md") and chat runs Gemini from `CHAT_DIR` (where the role doc says "you're in chat mode, don't write to project files"). Same UUID can't satisfy both stores, so each cwd needs its own session.
-
-To **rotate** any session later, re-run the same seeding procedure **from the same directory** and paste the new UUID, then restart Hermes.
-
-### 6. Run
+### 5. Run
 
 ```bash
 # From the repo root
@@ -223,9 +195,7 @@ rm -rf /path/to/your-project/{.claude,.gemini,.codex}
 | `✗ nats-server not found in PATH` | Install nats-server (see step 2), then re-run `npm run dev`. |
 | `✗ Port 4222 is in use by a non-NATS process` | Something else is bound to 4222. Stop it (`lsof -i :4222` to find it), or change NATS's port. |
 | `WORK_DIR does not exist` log on boot | Typo in `hermes/.env`'s `WORK_DIR`, or you forgot to `mkdir` the folder. Fix and restart. |
-| Claude session expired / `exit code 1` | Re-seed `CLAUDE_SESSION_ID` in `hermes/.env`, restart Hermes. |
-| Gemini session expired | Re-seed `GEMINI_SESSION_ID`, restart Hermes. |
-| Codex session expired | Re-seed `CODEX_SESSION_ID`, restart Hermes. |
+| Claude / Gemini / Codex CLI errors on invocation | Make sure you're logged in to each CLI (`claude`, `gemini`, or `codex` alone should work from your shell). Argus spawns them fresh each task — if auth has expired, re-authenticate. |
 | Stuck in `planning` | Claude did not write a `<slug>-Plan.md` ending with `**Plan Status:** READY`. Check the `[build]` stdout — common causes are dropping the slug prefix (`Plan.md` alone won't match) or omitting the READY marker. |
 | Build aborted with "slug mismatch" | You picked **Continue: \<slug\>** but Claude wrote a different slug filename. Re-submit; if it persists, check `.claude/CLAUDE.md` to confirm the continuation rules are intact. |
 | Stuck in `building` | Gemini did not append a new `### Iteration` to `<slug>-Build-Log.md`. |

@@ -209,7 +209,7 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
               borderBottom: '1px solid rgba(255,255,255,0.1)',
             }}
           >
-            Reset Sessions
+            Refresh Agent Auth
           </button>
 
           {overallBusy && (

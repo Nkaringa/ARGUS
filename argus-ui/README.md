@@ -70,7 +70,7 @@ argus-ui/
 │   └── components/
 │       ├── Layout/
 │       │   ├── Sidebar.tsx          left nav — BMW dark strip
-│       │   └── ResetSessionsModal.tsx  documentation-only rotation guide
+│       │   └── ResetSessionsModal.tsx  "Refresh Agent Auth" — documentation-only (CLI re-auth steps)
 │       ├── shared/
 │       │   └── markdownComponents.tsx  shared react-markdown styling (BMW aesthetic)
 │       ├── ChatView/                per-agent chat (rendered 3×, one per agent)

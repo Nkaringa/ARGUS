@@ -25,13 +25,13 @@ The core abstraction is simple: **agents write to files, Hermes watches files, f
 
 ## Agents
 
-| Agent | CLI | Role | Session strategy |
+| Agent | CLI | Role | Invocation |
 |---|---|---|---|
-| Claude | `claude` | Planner · Discuss Planner | `claude --resume {CLAUDE_SESSION_ID}` |
-| Gemini | `gemini` | Builder · Discuss Builder | `gemini --resume {GEMINI_SESSION_ID}` |
-| Codex | `codex` | Auditor · Discuss Auditor | `codex exec resume {CODEX_SESSION_ID}` |
+| Claude | `claude` | Planner · Discuss Planner | `claude -p "<task>"` (one-shot) |
+| Gemini | `gemini` | Builder · Discuss Builder · Chat | `gemini -p "<task>" -y` (one-shot) |
+| Codex | `codex` | Auditor · Discuss Auditor | `codex exec "<task>"` (one-shot) |
 
-All three use the same pattern: the user seeds a UUID in `hermes/.env`, every invocation resumes that session. One session per agent spans chat, build, and warzone. Rotate by seeding a fresh UUID.
+Every agent call is a fresh non-interactive invocation. No session UUIDs, no `--resume`. Context comes from the prompt text + role doc + files on disk.
 
 Each agent has a role spec in its dotfile: `.claude/CLAUDE.md`, `.gemini/GEMINI.md`, `.codex/CODEX.md`.
 
@@ -267,18 +267,17 @@ npm run dev:ui          # Argus UI (port 5173)
 
 ---
 
-## Session Management
+## Agent Invocation
 
-All three agents use the same model: the user seeds a UUID in `hermes/.env`, and every invocation resumes that session. Hermes never creates sessions — it only reads and resumes.
+No session UUIDs, no `--resume`. Every call is a fresh one-shot CLI spawn. Context for each invocation comes from three places, not from vendor-side session memory:
 
-| Agent | Strategy |
-|---|---|
-| Claude (all roles) | `claude --resume {CLAUDE_SESSION_ID}`. Refresh by running `claude` → `/exit` → copy UUID into `.env`. |
-| Gemini (build/warzone) | `gemini --resume {GEMINI_SESSION_ID}`. Refresh by running `gemini` → `/exit` → copy the `To resume this session:` UUID into `.env`. |
-| Gemini (chat) | Separate session (`GEMINI_CHAT_SESSION_ID`), seeded from `CHAT_DIR`. Required because Gemini CLI scopes session storage by cwd; chat runs from `CHAT_DIR`, so it needs its own UUID created there. `CHAT_DIR` also isolates the role doc so chat Gemini doesn't log to Build-Log.md. |
-| Codex (all roles) | `codex exec resume {CODEX_SESSION_ID} …`. The top-level `codex resume` is TTY-only and will not work. Refresh by running `codex exec …` and copying the printed UUID. |
+- **Prompt text** — the workflow bakes the task description, continuation context, and role-doc reminders into `{task}`.
+- **Role doc on disk** — `.claude/CLAUDE.md`, `.gemini/GEMINI.md`, `.codex/CODEX.md` inside `WORK_DIR` (or `CHAT_DIR` for chat Gemini). Each CLI loads this from cwd on spawn.
+- **Files on disk** — plan, build log, and audit files are read by the agent with its Read tool.
 
-**Rotating sessions.** When you start a task unrelated to prior work, seed fresh UUIDs for all three in `.env` and restart Hermes. There is no server-side session state — rotation is purely an `.env` edit + restart.
+**CHAT_DIR still exists** — not for session isolation, but for role-doc isolation. Chat Gemini spawns with `cwd=CHAT_DIR` so it loads a chat-specific `GEMINI.md` telling it not to write to `Build-Log.md`.
+
+**Auth refresh.** If a CLI's auth expires, re-authenticate that CLI directly (`claude`, `gemini`, or `codex` from your shell). Argus picks up the refreshed auth on the next spawn — no `.env` change, no restart.
 
 ---
 
@@ -291,8 +290,6 @@ All three agents use the same model: the user seeds a UUID in `hermes/.env`, and
 | Build stuck at BUILDING | Gemini didn't append a new `### Iteration` to `<slug>-Build-Log.md` | Check build server stdout |
 | Build stuck at AUDITING | Codex didn't write `**Audit Grade:** [ABCF]` to `<slug>-Build-Feedback.md` | Check build server stdout |
 | Warzone stuck at a phase | Missing status marker in the current `<slug>-WarZone.md` for that phase | Check marker format against watcher patterns |
-| Claude chat session expired | Session UUID invalid | `claude` → `/exit` → update `CLAUDE_SESSION_ID` |
-| Codex session invalid | Session UUID expired or from wrong machine | `codex exec …` → copy UUID from stdout → update `CODEX_SESSION_ID` |
-| Gemini session invalid | `GEMINI_SESSION_ID` missing or expired | `gemini` → `/exit` → copy UUID from `To resume this session:` line → update `GEMINI_SESSION_ID` |
-| Gemini writes to a `*-Build-Log.md` during chat | `CHAT_DIR` is a directory with `.gemini/` | Point `CHAT_DIR` at `/tmp/argus-chat` |
+| CLI auth error on agent spawn | Vendor auth expired | Re-authenticate the CLI directly (`claude`, `gemini`, or `codex` from your shell). Argus picks up the refresh on next invocation. |
+| Gemini writes to a `*-Build-Log.md` during chat | `CHAT_DIR` is a directory with `.gemini/` containing the build role doc | Point `CHAT_DIR` at `/tmp/argus-chat` (its own isolated `.gemini/GEMINI.md` gets written on boot) |
 | Grade never detected | `<slug>-Build-Feedback.md` pattern mismatch | Verify exact string `**Audit Grade:** A` (case-sensitive) |

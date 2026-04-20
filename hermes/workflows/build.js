@@ -133,7 +133,7 @@ function launchAuditor() {
 
     const auditPrompt = `You are the AUDITOR in the Argus build pipeline. Read .codex/CODEX.md for your role spec. Read ${planFile} (what should have been built) and ${buildLogFile} (what Gemini reports was built — find the latest ### Iteration entry). The deliverables live inside \`${currentSlug}/\` — read and verify the files Gemini lists under "Files Created/Modified" from there.
 
-Append your audit to ${feedbackFile} (at the project root) with a new ### Iteration entry and the exact line \`**Audit Grade:** [A/B/C/F]\`.
+Append your audit to ${feedbackFile} (at the project root) with a new ### Iteration entry and the exact line \`**Audit Grade:** <LETTER>\` where \`<LETTER>\` is one of A, B, C, or F (no brackets, just the letter). For example: \`**Audit Grade:** A\`.
 
 Scope rules:
 - Read deliverable files only from \`${currentSlug}/\`. Read meta files (${planFile}, ${buildLogFile}) from the project root.
