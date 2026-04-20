@@ -255,11 +255,10 @@ NK-Base/
 ## How to Start
 
 ```bash
-# From NK-Base root — starts all 3 Hermes servers + Argus UI
-nats-server &
+# From NK-Base root — starts NATS + all 3 Hermes servers + Argus UI
 npm run dev
 
-# Or run components individually
+# Or run components individually (requires nats-server already running)
 npm run dev:chat        # chat server (port 3001)
 npm run dev:build       # build server (port 3002)
 npm run dev:warzone     # warzone server (port 3003)
@@ -287,7 +286,7 @@ All three agents use the same model: the user seeds a UUID in `hermes/.env`, and
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| NATS connection refused | `nats-server` not running | `nats-server &` |
+| NATS connection refused | `nats-server` not running (happens only with individual `npm run dev:*` scripts) | Use `npm run dev` which auto-starts NATS, or start it manually first |
 | Build stuck at PLANNING | Claude didn't write a `<slug>-Plan.md` ending with `**Plan Status:** READY` (common: forgot the slug prefix or the READY marker) | Check build server stdout, re-run |
 | Build stuck at BUILDING | Gemini didn't append a new `### Iteration` to `<slug>-Build-Log.md` | Check build server stdout |
 | Build stuck at AUDITING | Codex didn't write `**Audit Grade:** [ABCF]` to `<slug>-Build-Feedback.md` | Check build server stdout |

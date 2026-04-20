@@ -31,8 +31,7 @@ cd argus-ui && npm run dev
 Hermes must be running for the UI to do anything useful. From the repo root:
 
 ```bash
-nats-server &
-npm run dev         # starts all 3 Hermes servers + Argus UI
+npm run dev         # starts NATS + all 3 Hermes servers + Argus UI
 ```
 
 ---

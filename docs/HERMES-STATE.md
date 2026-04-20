@@ -11,9 +11,8 @@ The system is **Argus** (brand/UI name). **Hermes** is the internal engine name.
 ## How to Start
 
 ```bash
-# From NK-Base root
-nats-server &        # only if not already running
-npm run dev          # starts all 3 servers + Vite UI
+# From NK-Base root — auto-starts NATS (reused if already running) + all 3 servers + UI
+npm run dev
 
 # Kill stuck ports first if needed
 lsof -ti:3001,3002,3003 | xargs kill -9 2>/dev/null; npm run dev

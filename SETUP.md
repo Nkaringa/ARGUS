@@ -124,11 +124,29 @@ To **rotate** any session later, re-run the same seeding procedure **from the sa
 
 ```bash
 # From the repo root
-nats-server &                  # or: brew services start nats-server on macOS
 npm run dev
 ```
 
-`npm run dev` uses `concurrently` to start all four processes in one terminal:
+`npm run dev` starts NATS automatically, then runs all four processes in one terminal. On boot you'll see:
+
+```
+Checking environment...
+
+✔ NATS binary found
+✔ Port 4222 free → starting NATS
+✔ NATS ready
+
+Starting Argus...
+
+[chat] ...
+[build] ...
+[warzone] ...
+[ui] ...
+```
+
+If `nats-server` isn't installed yet, the preflight prints the install command for your OS and exits — no cryptic `ECONNREFUSED`. If NATS is already running externally (e.g. `brew services start nats-server`), the orchestrator detects it and reuses it instead of starting a second instance.
+
+The four processes:
 
 | Process | Port | Purpose |
 |---|---|---|
@@ -202,7 +220,8 @@ rm -rf /path/to/your-project/{.claude,.gemini,.codex}
 
 | Symptom | Fix |
 |---|---|
-| `ECONNREFUSED` on startup | Start `nats-server &` before `npm run dev`. |
+| `✗ nats-server not found in PATH` | Install nats-server (see step 2), then re-run `npm run dev`. |
+| `✗ Port 4222 is in use by a non-NATS process` | Something else is bound to 4222. Stop it (`lsof -i :4222` to find it), or change NATS's port. |
 | `WORK_DIR does not exist` log on boot | Typo in `hermes/.env`'s `WORK_DIR`, or you forgot to `mkdir` the folder. Fix and restart. |
 | Claude session expired / `exit code 1` | Re-seed `CLAUDE_SESSION_ID` in `hermes/.env`, restart Hermes. |
 | Gemini session expired | Re-seed `GEMINI_SESSION_ID`, restart Hermes. |
