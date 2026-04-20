@@ -16,7 +16,6 @@ const { validateEnv } = require('../core/env');
 
 validateEnv('build', {
     required: ['WORK_DIR'],
-    recommend: ['CLAUDE_SESSION_ID', 'CODEX_SESSION_ID', 'GEMINI_SESSION_ID'],
 });
 
 const PORT = process.env.BUILD_PORT || 3002;

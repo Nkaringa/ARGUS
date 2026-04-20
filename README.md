@@ -40,7 +40,7 @@ On a non-A grade, you approve in the UI and Gemini revises from the same plan us
 │  │  XState v5 · NATS pub/sub · SQLite · chokidar        │   │
 │  └──────────────────────┬───────────────────────────────┘   │
 └─────────────────────────┼───────────────────────────────────┘
-                          │ spawn: `<cli> --resume <UUID> ...`
+                          │ spawn: `<cli> -p "<task>" ...` (one-shot)
      ┌────────────────────┼────────────────────┐
      │                    │                    │
 ┌────┴─────┐        ┌─────┴─────┐        ┌─────┴────┐

@@ -7,7 +7,11 @@ interface ResetSessionsModalProps {
 
 /**
  * Documentation-only modal. No fetch, no backend call, no state mutation.
- * Argus never creates agent sessions — rotation is a manual .env edit.
+ *
+ * Argus spawns each agent CLI fresh on every task — there are no session UUIDs
+ * to manage. If a CLI's vendor auth (Claude Code login, Gemini CLI login, Codex
+ * CLI login) expires, the user just re-authenticates that CLI in a terminal
+ * and Argus picks up the refreshed auth on the next invocation.
  */
 export function ResetSessionsModal({ open, onClose }: ResetSessionsModalProps) {
   useEffect(() => {
@@ -43,7 +47,7 @@ export function ResetSessionsModal({ open, onClose }: ResetSessionsModalProps) {
               letterSpacing: '0.02em',
             }}
           >
-            Reset Sessions
+            Refresh Agent Auth
           </h2>
           <button
             onClick={onClose}
@@ -63,11 +67,11 @@ export function ResetSessionsModal({ open, onClose }: ResetSessionsModalProps) {
           className="text-[#262626]"
           style={{ fontSize: 16, lineHeight: 1.3, fontWeight: 400 }}
         >
-          Argus never creates agent sessions. All three bots are invoked with
-          {' '}<code className="bg-[#262626] text-white px-1.5 py-0.5">--resume &lt;UUID&gt;</code>{' '}
-          from values in <code className="bg-[#262626] text-white px-1.5 py-0.5">hermes/.env</code>.
-          To rotate context, seed fresh UUIDs and restart Hermes — Argus has no
-          server-side session state to clear.
+          Argus spawns each agent CLI fresh on every task — no session state
+          to manage, nothing to rotate. If an agent starts failing with an
+          auth/login error, re-authenticate the CLI directly in your terminal.
+          Argus picks up the refreshed auth on the next invocation with no
+          restart needed.
         </p>
 
         <h3
@@ -79,49 +83,44 @@ export function ResetSessionsModal({ open, onClose }: ResetSessionsModalProps) {
             letterSpacing: '0.15em',
           }}
         >
-          Rotation Steps
+          Re-authenticate a CLI
         </h3>
 
         <div className="space-y-4">
           <CodeBlock
             label="Claude"
             lines={[
-              'cd $WORK_DIR && claude',
-              '# send one message, then /exit cleanly',
-              '# copy the UUID from the resume hint',
-              '# paste into hermes/.env as CLAUDE_SESSION_ID',
+              'claude',
+              '# follow the login prompt if auth has expired',
+              '# /exit once you see the prompt',
             ]}
           />
           <CodeBlock
             label="Gemini"
             lines={[
-              'cd $WORK_DIR && gemini',
-              '# send one message, then /exit',
-              '# copy UUID, paste as GEMINI_SESSION_ID',
+              'gemini',
+              '# follow the login prompt if auth has expired',
+              '# /exit once you see the prompt',
             ]}
           />
           <CodeBlock
             label="Codex"
             lines={[
-              'cd $WORK_DIR && codex',
-              '# send one message, then /exit',
-              '# copy UUID, paste as CODEX_SESSION_ID',
+              'codex',
+              '# follow the login prompt if auth has expired',
+              '# exit once you see the prompt',
             ]}
           />
         </div>
 
-        <h3
-          className="uppercase mt-10 mb-4"
-          style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 900,
-            fontSize: 18,
-            letterSpacing: '0.15em',
-          }}
+        <p
+          className="mt-8"
+          style={{ fontSize: 14, lineHeight: 1.3, color: '#757575' }}
         >
-          Restart Hermes
-        </h3>
-        <CodeBlock label="" lines={['npm run dev']} />
+          Each CLI caches its auth locally. Argus reads that cache every time
+          it spawns the CLI, so there is no per-agent config inside Argus to
+          touch — no <code className="bg-[#262626] text-white px-1.5 py-0.5">.env</code> edit, no Hermes restart.
+        </p>
       </div>
     </div>
   );

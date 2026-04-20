@@ -15,7 +15,9 @@ const BUILD_FEEDBACK_GLOB = path.join(WORK_DIR, '*-Build-Feedback.md');
 const WARZONE_GLOB        = path.join(WORK_DIR, '*-WarZone.md');
 
 const ITERATION_PATTERN   = /^### Iteration/m;
-const GRADE_PATTERN       = /\*\*Audit Grade:\*\*\s*([ABCF])/;
+// Accept both `**Audit Grade:** A` and `**Audit Grade:** [A]` — auditors have written
+// both variants depending on how they interpret the prompt template.
+const GRADE_PATTERN       = /\*\*Audit Grade:\*\*\s*\[?([ABCF])\]?/;
 const PLAN_STATUS_PATTERN = /\*\*Plan Status:\*\*\s*READY/;
 
 const CLAUDE_PLAN_DONE_PATTERN  = /\*\*Planner Status:\*\*\s*DONE/;

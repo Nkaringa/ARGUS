@@ -16,7 +16,6 @@ const { validateEnv } = require('../core/env');
 
 validateEnv('warzone', {
     required: ['WORK_DIR'],
-    recommend: ['CLAUDE_SESSION_ID', 'CODEX_SESSION_ID', 'GEMINI_SESSION_ID'],
 });
 
 const PORT = process.env.WARZONE_PORT || 3003;
