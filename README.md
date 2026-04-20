@@ -18,7 +18,7 @@ Each LLM is strong at something different. Rather than pick one and live with it
 - **Gemini builds** — implements the plan across the workspace, logging each iteration to `<slug>-Build-Log.md`.
 - **Codex audits** — reviews the implementation against the plan, grades it A / B / C / F in `<slug>-Build-Feedback.md`, and lists specific revision instructions on anything less than A.
 
-On a non-A grade, you approve in the UI and Gemini revises from the same plan using Codex's feedback. Plans are frozen across iterations — revisions are implementation fixes, not plan rewrites. When Codex gives an A, the task is done. When you submit the next task, the previous task's three files move into `Build-History/<slug>/` so the live workspace always holds exactly one task.
+On a non-A grade, you approve in the UI and Gemini revises from the same plan using Codex's feedback. Plans are frozen across iterations — revisions are implementation fixes, not plan rewrites. When Codex gives an A, the task is done — and at that moment the three meta files move into `Build-History/<slug>/` so the live workspace always holds exactly one task's meta files. The `<slug>/` deliverable folder stays in place for you to continue iterating on.
 
 ---
 

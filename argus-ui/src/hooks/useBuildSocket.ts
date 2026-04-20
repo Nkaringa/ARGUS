@@ -18,6 +18,7 @@ export function useBuildSocket() {
   const [task, setTask] = useState<string | null>(null);
   const [iteration, setIteration] = useState(0);
   const [grade, setGrade] = useState<string | undefined>(undefined);
+  const [slug, setSlug] = useState<string | null>(null);
   const [lines, setLines] = useState<OutputLine[]>([]);
   const [droppedLineCount, setDroppedLineCount] = useState(0);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -46,6 +47,7 @@ export function useBuildSocket() {
         if (msg.task !== undefined) setTask(msg.task);
         if (msg.iteration !== undefined) setIteration(msg.iteration);
         if (msg.grade !== undefined) setGrade(msg.grade);
+        if (msg.slug !== undefined) setSlug(msg.slug);
       }
 
       if (msg.type === 'output') {
@@ -95,24 +97,21 @@ export function useBuildSocket() {
     return cleanup;
   }, [connect]);
 
-  const refreshProjects = useCallback(async () => {
-    try {
-      const res = await fetch(`${SERVERS.build.http}/projects`, { headers: authHeaders() });
-      if (!res.ok) return;
-      const body = await res.json();
-      setProjects(Array.isArray(body.projects) ? body.projects : []);
-    } catch {
-      /* silent — selector just won't populate */
-    }
-  }, []);
-
-  // Refresh once on mount, and after any task transitions back to idle/done
-  // (a new project may have appeared, or — if the user manually deleted a folder — disappeared).
+  // Refresh on mount + after each idle/done transition. setState is called inside
+  // the fetch's .then() callback (post-await), so it's not synchronous within the
+  // effect body — satisfies react-hooks/set-state-in-effect without suppression.
   useEffect(() => {
-    if (state === 'idle' || state === 'done') {
-      refreshProjects();
-    }
-  }, [state, refreshProjects]);
+    if (state !== 'idle' && state !== 'done') return;
+    let cancelled = false;
+    fetch(`${SERVERS.build.http}/projects`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled || !body) return;
+        setProjects(Array.isArray(body.projects) ? body.projects : []);
+      })
+      .catch(() => { /* silent — selector just won't populate */ });
+    return () => { cancelled = true; };
+  }, [state]);
 
   const submitTask = useCallback(async (description: string, opts?: SubmitOpts) => {
     const body: Record<string, unknown> = { description };
@@ -159,5 +158,5 @@ export function useBuildSocket() {
     setDroppedLineCount(0);
   }, []);
 
-  return { state, task, iteration, grade, lines, droppedLineCount, history, projects, submitTask, sendApproval, stop };
+  return { state, task, iteration, grade, slug, lines, droppedLineCount, history, projects, submitTask, sendApproval, stop };
 }

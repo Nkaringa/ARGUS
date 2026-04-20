@@ -3,7 +3,7 @@ const path = require('path');
 const { createMachine, createActor } = require('xstate');
 const { subscribe } = require('../core/events');
 const { runAgent } = require('../core/agents');
-const { archiveLiveFiles } = require('../core/archive');
+const { archiveLiveFiles, isValidTaskSlug } = require('../core/archive');
 const { logEvent, createTask, completeTask, getHistory } = require('../core/db');
 
 let currentTaskId = null;
@@ -291,20 +291,52 @@ function startWorkflow() {
             }
             console.log(`[workflow] Continuing project: ${currentSlug}`);
         } else {
-            // New mode: Claude picks the slug; we capture it from the filename.
-            currentSlug = parsedSlug;
-            console.log(`[workflow] Slug for this task: ${currentSlug}`);
+            // New mode: Claude picks the slug on first entry; we capture it from the filename.
+            // On a retry, currentSlug is already set — enforce match so the planner can't
+            // silently swap slugs mid-flight.
+            if (currentSlug && parsedSlug !== currentSlug) {
+                console.warn(
+                    `[workflow] Planner slug drifted: expected "${currentSlug}", got "${parsedSlug}" — ignoring.`,
+                );
+                return;
+            }
+            // Reject malformed slugs here — Claude is the untrusted input. A non-kebab
+            // slug would poison every downstream prompt and filesystem path.
+            if (!isValidTaskSlug(parsedSlug)) {
+                console.warn(`[workflow] Planner produced invalid slug "${parsedSlug}" — aborting plan.`);
+                logEvent('agent.failed', {
+                    role: 'plan',
+                    error: `invalid slug: ${parsedSlug}`,
+                });
+                service.send({ type: 'PLAN_FAILED' });
+                return;
+            }
+            if (!currentSlug) {
+                currentSlug = parsedSlug;
+                console.log(`[workflow] Slug for this task: ${currentSlug}`);
+            }
         }
         service.send({ type: 'PLAN_DONE' });
     });
 
     subscribe('agent.completed', (payload) => {
-        if (payload.role === 'build') {
-            service.send({ type: 'BUILD_DONE' });
+        if (payload.role !== 'build') return;
+        // Correlate the event to the active task. Without these guards, an ambient
+        // write to a stale or wrong-slug *-Build-Log.md advances the state machine.
+        if (service.getSnapshot().value !== 'building') return;
+        if (!currentSlug || payload.file !== `${currentSlug}-Build-Log.md`) {
+            console.warn(`[workflow] Ignoring agent.completed for unrelated file: ${payload.file}`);
+            return;
         }
+        service.send({ type: 'BUILD_DONE' });
     });
 
     subscribe('grade.received', (payload) => {
+        if (service.getSnapshot().value !== 'auditing') return;
+        if (!currentSlug || payload.file !== `${currentSlug}-Build-Feedback.md`) {
+            console.warn(`[workflow] Ignoring grade.received for unrelated file: ${payload.file}`);
+            return;
+        }
         logEvent('grade.received', payload);
         lastGrade = payload.grade;
         if (payload.grade === 'A') {
@@ -328,6 +360,9 @@ function submitTask(description, opts = {}) {
         slug = typeof opts.slug === 'string' ? opts.slug.trim() : '';
         if (!slug) {
             throw new Error('continue mode requires a non-empty slug');
+        }
+        if (!isValidTaskSlug(slug)) {
+            throw new Error(`invalid slug format: ${slug}`);
         }
         const folder = path.join(process.env.WORK_DIR, slug);
         if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
@@ -376,6 +411,12 @@ function getState() {
         state: service.getSnapshot().value,
         task: currentTask,
         iteration: iterationCount,
+        // Include slug + grade so a reconnecting UI can render the full context of
+        // an in-flight or just-completed task. Without these, reconnect during
+        // auditing/awaiting_approval/done shows the state but loses which project is
+        // running and what grade was returned.
+        slug: currentSlug,
+        grade: lastGrade,
     };
 }
 

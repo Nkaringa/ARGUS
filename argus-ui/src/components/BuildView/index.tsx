@@ -149,19 +149,18 @@ export function BuildView({
   onAbort,
 }: BuildViewProps) {
   const [input, setInput] = useState('');
-  // 'new' or an existing project slug to continue. Reset to 'new' whenever the project
-  // list changes (e.g. user manually deleted the folder backing the current selection).
+  // 'new' or an existing project slug. Derived during render: if the stored
+  // selection points at a slug that no longer exists in `projects` (user deleted
+  // the folder, or the list refreshed without it), fall back to 'new' — without
+  // the effect-based state sync that React 19 flags.
   const [projectSel, setProjectSel] = useState<string>('new');
-  useEffect(() => {
-    if (projectSel !== 'new' && !projects.includes(projectSel)) {
-      setProjectSel('new');
-    }
-  }, [projects, projectSel]);
+  const effectiveProjectSel =
+    projectSel !== 'new' && !projects.includes(projectSel) ? 'new' : projectSel;
   const busy = ['planning', 'building', 'auditing'].includes(state);
   const showForm = state === 'idle' || state === 'done';
   const showApproval = state === 'awaiting_approval';
   const showPaused = state === 'paused';
-  const continueSlug = projectSel === 'new' ? null : projectSel;
+  const continueSlug = effectiveProjectSel === 'new' ? null : effectiveProjectSel;
 
   const handleSubmit = () => {
     const text = input.trim();
@@ -339,7 +338,7 @@ export function BuildView({
               </label>
               <select
                 id="project-selector"
-                value={projectSel}
+                value={effectiveProjectSel}
                 onChange={(e) => setProjectSel(e.target.value)}
                 className="bg-transparent outline-none"
                 style={{

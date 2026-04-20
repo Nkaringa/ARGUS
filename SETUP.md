@@ -95,7 +95,7 @@ GEMINI_SESSION_ID=<uuid>
 CODEX_SESSION_ID=<uuid>
 ```
 
-Seed the three session UUIDs next, then come back and paste them in.
+Seed the four session UUIDs next, then come back and paste them in.
 
 ### 5. Seed the four session UUIDs
 

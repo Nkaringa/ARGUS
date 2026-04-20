@@ -11,13 +11,23 @@ const { startWorkflow, submitTask, sendApproval, getState, setBroadcast } = requ
 const { getHistory, sweepStaleRunningTasks } = require('../core/db');
 const { corsMiddleware, authMiddleware, wsAuth } = require('../core/auth');
 const { ensureRoleDocs } = require('../core/role-docs');
-const { listProjectFolders, listBuildHistory, readBuildHistory } = require('../core/archive');
+const { listProjectFolders, listBuildHistory, readBuildHistory, isValidTaskSlug } = require('../core/archive');
+const { validateEnv } = require('../core/env');
+
+validateEnv('build', {
+    required: ['WORK_DIR'],
+    recommend: ['CLAUDE_SESSION_ID', 'CODEX_SESSION_ID', 'GEMINI_SESSION_ID'],
+});
 
 const PORT = process.env.BUILD_PORT || 3002;
 const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 
 const app = express();
-app.use(express.json());
+// POST /task carries a task description (typically a few hundred chars). 64 KB is
+// ~20x that and still small enough to reject accidental multi-MB payloads without
+// parsing them. Explicit cap replaces Express' permissive 100 KB default and
+// makes the limit a deliberate, reviewable decision.
+app.use(express.json({ limit: '64kb' }));
 app.use(corsMiddleware);
 app.use(authMiddleware);
 
@@ -57,6 +67,9 @@ app.post('/task', (req, res) => {
     if (submitMode === 'continue') {
         if (!slug || typeof slug !== 'string' || !slug.trim()) {
             return res.status(400).json({ error: 'continue mode requires a slug' });
+        }
+        if (!isValidTaskSlug(slug.trim())) {
+            return res.status(400).json({ error: 'invalid slug format (must be lowercase kebab-case, ≤50 chars)' });
         }
     }
     try {

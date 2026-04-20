@@ -200,11 +200,11 @@ NK-Base/
 │   ├── core/                  shared infrastructure
 │   │   ├── agents.js          agent runner (buildCommand, runAgent)
 │   │   ├── agents.json        agent configs (6 entries: builder, planner, codex_auditor + 3 discuss variants)
-│   │   ├── archive.js         Build-History move on each submitTask + parseTaskFile helper
+│   │   ├── archive.js         archiveLiveFiles (on task completion) + per-task + history list/read helpers + slug parsers
 │   │   ├── auth.js            shared-secret auth + CORS
 │   │   ├── db.js              SQLite (logEvent, createTask, completeTask, getHistory)
 │   │   ├── events.js          NATS pub/sub
-│   │   └── watcher.js         file watcher (*-Plan.md, *-Build-Log.md, *-Build-Feedback.md, WarZone.md)
+│   │   └── watcher.js         file watcher (*-Plan.md, *-Build-Log.md, *-Build-Feedback.md, *-WarZone.md)
 │   │
 │   ├── workflows/
 │   │   ├── build.js           XState — build pipeline
@@ -230,7 +230,7 @@ NK-Base/
 ├── <slug>-Build-Log.md        created at runtime (Gemini)
 ├── <slug>-Build-Feedback.md   created at runtime (Codex)
 ├── <slug>-WarZone.md          created at runtime (all three; one per discussion topic)
-├── Build-History/<slug>/      archive of past build tasks' meta files (Hermes moves them here on next submitTask)
+├── Build-History/<slug>/      archive of past build tasks' meta files (Hermes moves them here on task completion: grade A, skip, or abort)
 └── WarZone-History/<slug>/    archive of past discussions (Hermes moves files here on New Discussion)
 ```
 
@@ -276,7 +276,7 @@ All three agents use the same model: the user seeds a UUID in `hermes/.env`, and
 |---|---|
 | Claude (all roles) | `claude --resume {CLAUDE_SESSION_ID}`. Refresh by running `claude` → `/exit` → copy UUID into `.env`. |
 | Gemini (build/warzone) | `gemini --resume {GEMINI_SESSION_ID}`. Refresh by running `gemini` → `/exit` → copy the `To resume this session:` UUID into `.env`. |
-| Gemini (chat) | Same session as build/warzone — `CHAT_DIR` only isolates the *cwd* so Gemini doesn't write to Build-Log.md during chat. |
+| Gemini (chat) | Separate session (`GEMINI_CHAT_SESSION_ID`), seeded from `CHAT_DIR`. Required because Gemini CLI scopes session storage by cwd; chat runs from `CHAT_DIR`, so it needs its own UUID created there. `CHAT_DIR` also isolates the role doc so chat Gemini doesn't log to Build-Log.md. |
 | Codex (all roles) | `codex exec resume {CODEX_SESSION_ID} …`. The top-level `codex resume` is TTY-only and will not work. Refresh by running `codex exec …` and copying the printed UUID. |
 
 **Rotating sessions.** When you start a task unrelated to prior work, seed fresh UUIDs for all three in `.env` and restart Hermes. There is no server-side session state — rotation is purely an `.env` edit + restart.

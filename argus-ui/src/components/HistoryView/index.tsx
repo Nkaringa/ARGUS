@@ -20,45 +20,45 @@ function formatDate(mtime: number): string {
   });
 }
 
+type LoadedContent =
+  | { kind: 'build'; slug: string; data: BuildArchive | null }
+  | { kind: 'discussion'; slug: string; data: DiscussionArchive | null };
+
 export function HistoryView() {
-  const { builds, discussions, loading, refresh } = useHistory();
+  const { builds, discussions, loading } = useHistory();
   const [selected, setSelected] = useState<Selection>(null);
-  const [buildContent, setBuildContent] = useState<BuildArchive | null>(null);
-  const [discussionContent, setDiscussionContent] = useState<DiscussionArchive | null>(null);
-  const [contentLoading, setContentLoading] = useState(false);
+  const [loaded, setLoaded] = useState<LoadedContent | null>(null);
 
-  // Refresh the lists when the user returns to this tab — keeps the rail current
-  // if a build completes while the user is on another tab.
+  // Fetch content when selection changes. setState runs in the .then() callback
+  // (post-await), satisfying react-hooks/set-state-in-effect. Loading state is
+  // derived from (selected vs loaded) rather than synced via a separate flag.
   useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  // Fetch the body content whenever the selection changes. Cancels the in-flight
-  // fetch on rapid selection switches to prevent late-arriving data clobbering.
-  useEffect(() => {
-    if (!selected) {
-      setBuildContent(null);
-      setDiscussionContent(null);
-      return;
-    }
+    if (!selected) return;
     let cancelled = false;
-    setContentLoading(true);
-    setBuildContent(null);
-    setDiscussionContent(null);
-    (async () => {
-      if (selected.kind === 'build') {
-        const data = await fetchBuildArchive(selected.slug);
-        if (!cancelled) setBuildContent(data);
-      } else {
-        const data = await fetchDiscussionArchive(selected.slug);
-        if (!cancelled) setDiscussionContent(data);
-      }
-      if (!cancelled) setContentLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    const fetcher = selected.kind === 'build'
+      ? fetchBuildArchive(selected.slug).then(
+          (data): LoadedContent => ({ kind: 'build', slug: selected.slug, data }),
+        )
+      : fetchDiscussionArchive(selected.slug).then(
+          (data): LoadedContent => ({ kind: 'discussion', slug: selected.slug, data }),
+        );
+    fetcher.then((result) => {
+      if (cancelled) return;
+      setLoaded(result);
+    });
+    return () => { cancelled = true; };
   }, [selected]);
+
+  const contentMatchesSelection =
+    selected !== null
+    && loaded !== null
+    && loaded.kind === selected.kind
+    && loaded.slug === selected.slug;
+  const contentLoading = selected !== null && !contentMatchesSelection;
+  const buildContent = contentMatchesSelection && loaded!.kind === 'build'
+    ? (loaded!.data as BuildArchive | null) : null;
+  const discussionContent = contentMatchesSelection && loaded!.kind === 'discussion'
+    ? (loaded!.data as DiscussionArchive | null) : null;
 
   return (
     <div className="flex h-full bg-white text-[#262626]">

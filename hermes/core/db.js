@@ -1,8 +1,11 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-// hermes.db lives at hermes/ root (one level up from core/)
-const db = new Database(path.join(__dirname, '../hermes.db'));
+// hermes.db lives at hermes/ root (one level up from core/) by default.
+// HERMES_DB_PATH overrides for tests (per-test temp DB) and deployments that want
+// state on a mounted volume.
+const DB_PATH = process.env.HERMES_DB_PATH || path.join(__dirname, '../hermes.db');
+const db = new Database(DB_PATH);
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS events (

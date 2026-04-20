@@ -7,11 +7,15 @@ const WARZONE_BASE = 'WarZone.md';
 // Parse a runtime task filename into its slug and base.
 // `landing-page-Plan.md` → { slug: 'landing-page', base: 'Plan.md' }
 // `Plan.md` (no slug)    → null
+// Rejects unsafe prefixes (`..-Plan.md`, `foo/bar-Plan.md`, etc.) so archival never
+// feeds a traversal-capable slug into path.join.
 function parseTaskFile(filename) {
     for (const base of BASES) {
         const suffix = `-${base}`;
         if (filename.endsWith(suffix) && filename.length > suffix.length) {
-            return { slug: filename.slice(0, -suffix.length), base };
+            const slug = filename.slice(0, -suffix.length);
+            if (!isSafeSlug(slug)) return null;
+            return { slug, base };
         }
     }
     return null;
@@ -19,10 +23,13 @@ function parseTaskFile(filename) {
 
 // `portfolio-WarZone.md` → 'portfolio'
 // `WarZone.md`           → null
+// Rejects unsafe prefixes for the same reason as parseTaskFile.
 function parseWarzoneFile(filename) {
     const suffix = `-${WARZONE_BASE}`;
     if (filename.endsWith(suffix) && filename.length > suffix.length) {
-        return filename.slice(0, -suffix.length);
+        const slug = filename.slice(0, -suffix.length);
+        if (!isSafeSlug(slug)) return null;
+        return slug;
     }
     return null;
 }
@@ -96,6 +103,10 @@ function archiveLiveFiles() {
 function archiveWarzoneFile(slug) {
     const WORK_DIR = process.env.WORK_DIR;
     if (!WORK_DIR || !slug) return;
+    if (!isSafeSlug(slug)) {
+        console.warn(`[archive] Refusing to archive warzone with unsafe slug: ${slug}`);
+        return;
+    }
 
     const src = path.join(WORK_DIR, `${slug}-${WARZONE_BASE}`);
     if (!fs.existsSync(src)) return;
@@ -170,11 +181,22 @@ function findLiveWarzoneSlug() {
 
 const HISTORY_SLUG_RE = /^[a-zA-Z0-9_-]+$/;
 
-// Validates that a caller-provided slug name is safe to use as a path segment under
-// Build-History/ or WarZone-History/. Strict: alphanumeric + underscore + hyphen only.
-// Prevents path traversal (../) and accidental access outside the history folder.
+// Validates that a slug is safe to use as a path segment anywhere under WORK_DIR.
+// Strict: alphanumeric + underscore + hyphen only, length capped to rule out absurd input.
+// Permits timestamp-suffixed archive folder names (e.g. `landing-page-2026-04-17T15-30-12`).
+// This is the PATH-SAFETY gate — anything that touches the filesystem goes through this.
 function isSafeSlug(slug) {
-    return typeof slug === 'string' && HISTORY_SLUG_RE.test(slug);
+    return typeof slug === 'string' && slug.length > 0 && slug.length <= 80 && HISTORY_SLUG_RE.test(slug);
+}
+
+// Kebab-case validator for task/discussion slugs at ingress.
+// Mirrors the CLAUDE.md spec: lowercase letters/digits + single hyphens, 1-50 chars,
+// no leading/trailing/consecutive hyphens. Stricter than isSafeSlug (which also permits
+// archive timestamp suffixes). Use this wherever a slug enters the system from a user,
+// an agent-written filename, or an HTTP request.
+const TASK_SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+function isValidTaskSlug(slug) {
+    return typeof slug === 'string' && slug.length >= 1 && slug.length <= 50 && TASK_SLUG_RE.test(slug);
 }
 
 // List archived build folders under WORK_DIR/Build-History/, newest first.
@@ -280,7 +302,7 @@ function listProjectFolders() {
     return entries
         .filter((e) => e.isDirectory())
         .map((e) => e.name)
-        .filter((name) => !name.startsWith('.') && !SYSTEM_FOLDERS.has(name))
+        .filter((name) => !name.startsWith('.') && !SYSTEM_FOLDERS.has(name) && isSafeSlug(name))
         .sort();
 }
 
@@ -289,6 +311,7 @@ module.exports = {
     archiveWarzoneFile,
     findLiveWarzoneSlug,
     isSafeSlug,
+    isValidTaskSlug,
     listBuildHistory,
     listDiscussionHistory,
     listProjectFolders,
