@@ -1,6 +1,0 @@
-{
-  "name": "parallel-read",
-  "version": "1.0.0",
-  "main": "parallel-read.js",
-  "type": "commonjs"
-}
