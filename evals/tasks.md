@@ -49,11 +49,11 @@
          /Users/karinganageshgoud/Desktop/Karinga.dev/Indy-Test/task-NN-solo/ 2>/dev/null || true
    cd /Users/karinganageshgoud/Desktop/Karinga.dev/Indy-Test/task-NN-solo
    ```
-2. Invoke:
+2. Invoke (tool pre-approval mirrors what Argus gives its Claude planner + Gemini builder + Codex auditor across the pipeline):
    ```bash
-   time claude -p "Build this end-to-end yourself, don't plan separately. <PROMPT>"
+   time claude --allowedTools Edit Write Read Glob Grep Bash -p "Build this end-to-end yourself, don't plan separately. <PROMPT>" < /dev/null
    ```
-3. Record `real` from `time` output as wall-time in seconds.
+3. Record `real` from `time` output as wall-time in seconds. Wall-times from runs before the `--allowedTools` fix (where Claude exited waiting for permission) are discarded.
 4. Grade the folder against the rubric.
 
 ## What gets recorded
@@ -272,28 +272,29 @@ echo 'not json' | node index.js 2>/dev/null; echo "exit: $?"
 
 | # | Task | Argus task_id | Argus grade | Argus iter | Argus wall (s) | Argus result | Solo wall (s) | Solo result |
 |---|---|---|---|---|---|---|---|---|
-| 01 | Portfolio | | | | | | | |
-| 02 | Recipe card | | | | | | | |
-| 03 | Tic-tac-toe | | | | | | | |
-| 04 | Word counter | | | | | | | |
-| 05 | JSON pretty | | | | | | | |
-| 06 | MD → JSON | | | | | | | |
-| 07 | Log parser | | | | | | | |
-| 08 | JS refactor | | | | | | | |
-| 09 | Parallel-read debug | | | | | | | |
-| 10 | Running-avg debug | | | | | | | |
+| 01 | Portfolio | 43 | A | 1 | 178.28 | pass | 64.67 | pass |
+| 02 | Recipe card | 44 | B | 2 | 385.29 | pass | 56.57 | pass |
+| 03 | Tic-tac-toe | 45 | A | 1 | 128.75 | pass | 27.06 | pass |
+| 04 | Word counter | 46 | A | 1 | 161.32 | pass | 19.95 | pass |
+| 05 | JSON pretty | 47 | A | 2 | 303.55 | pass | 21.04 | pass |
+| 06 | MD → JSON | 48 | C | 2 | 460.26 | pass* | 20.12 | pass |
+| 07 | Log parser | 49 | A | 1 | 186.32 | pass | 15.93 | pass |
+| 08 | JS refactor | 50 | A | 1 | 206.37 | pass | 54.59 | pass |
+| 09 | Parallel-read debug | 51 | A | 1 | 137.81 | pass | 26.40 | pass |
+| 10 | Running-avg debug | 52 | A | 1 | 156.32 | pass | 28.79 | pass |
 
-## Summary (fill after all runs, in comparison.md)
+## Summary (frozen 2026-04-21 after all runs)
 
-- Argus: _ pass / _ partial / _ fail out of 10
-- Solo-Claude: _ pass / _ partial / _ fail out of 10
-- Mean Argus wall-time: _ s (median: _ s)
-- Mean solo-Claude wall-time: _ s (median: _ s)
-- Argus first-grade-A rate: _ / 10
-- Argus reached-A rate (within 2 iterations): _ / 10
-- Mean Argus iterations-to-completion: _
-- Cases where Argus audit caught a real issue: _ (describe which)
-- Cases where solo-Claude passed but Argus didn't (or vice versa): _
+- **Argus:** 10 pass / 0 partial / 0 fail (task 06 is `pass*` — parser rubric-correct, Codex C was eval-protocol artifact)
+- **Solo-Claude:** 10 pass / 0 partial / 0 fail
+- **Mean Argus wall-time:** 230.4 s (median 182.3 s)
+- **Mean solo-Claude wall-time:** 33.5 s (median 26.7 s)
+- **Wall-time gap:** ~6.88× (mean), ~6.8× (median)
+- **Argus first-grade-A rate:** 7 / 10
+- **Argus reached-A rate (within 2 iterations):** 8 / 10
+- **Mean Argus iterations-to-completion:** 1.3
+- **Argus audit caught a real issue:** task 06 (Codex's C correctly reflected that the build couldn't run end-to-end against the seed — audit fired honestly even though the parser itself was sound)
+- **Cases where solo passed but Argus didn't (or vice versa):** 0 rubric-level divergences
 
 ## Observations (fill after all runs)
 
