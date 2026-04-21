@@ -3,6 +3,7 @@ const readline = require('readline');
 const path = require('path');
 const fs = require('fs');
 const { publish } = require('./events');
+const { logEvent } = require('./db');
 
 const AGENTS_CONFIG = JSON.parse(
     fs.readFileSync(path.join(__dirname, 'agents.json'), 'utf8')
@@ -99,9 +100,15 @@ function publishStart(pipeline, agent) {
     publish(topic, { agent: agent.name, role: agent.role });
 }
 
-function publishCompleted(pipeline, agent, durationMs, exitCode) {
+function publishCompleted(pipeline, agent, durationMs, exitCode, taskId) {
     const topic = pipeline ? `${pipeline}.agent.completed` : 'agent.completed';
-    publish(topic, { agent: agent.name, role: agent.role, durationMs, exitCode });
+    const payload = { agent: agent.name, role: agent.role, durationMs, exitCode };
+    // Persist to DB alongside the NATS publish. Unlike agent.started (persisted by the
+    // workflow that launches the agent), completed is only known by the agent runner —
+    // if we don't persist here, nothing does. This is what unblocks latency/exit-code
+    // telemetry and the eval harness.
+    publish(topic, payload);
+    logEvent(topic, payload, taskId);
 }
 
 // (4) timeout — SIGTERM, then SIGKILL after grace, with explicit listener teardown so
@@ -141,8 +148,16 @@ function attachTimeout(proc, agent, teardownStreams) {
 //   - outputTopic   per-pipeline NATS subject for stdout/stderr lines (default 'agent.output')
 //   - pipeline      'build' | 'warzone' | 'chat' — namespaces start/completed events
 //   - cwd           override for child process working directory
-function runAgent(agentKey, task, { outputTopic = 'agent.output', pipeline, cwd } = {}) {
+//   - taskId        tasks.id for the active pipeline task — captured at call time and
+//                   closed over so publishCompleted attributes the row correctly even if
+//                   the caller's currentTaskId has moved on (abort + new task) by the
+//                   time the child process exits. Null is acceptable (warzone/chat).
+function runAgent(agentKey, task, { outputTopic = 'agent.output', pipeline, cwd, taskId = null } = {}) {
     const { cmd, agent } = buildCommand(agentKey, task);
+    // Freeze taskId into the closure at launch. Critical: reading currentTaskId from a
+    // workflow module-level variable at the .close handler's firing time would lose
+    // attribution for agents that finish AFTER the task was aborted.
+    const capturedTaskId = taskId;
 
     console.log(`[agents] Running ${agent.name}: ${cmd}`);
     publishStart(pipeline, agent);
@@ -159,7 +174,7 @@ function runAgent(agentKey, task, { outputTopic = 'agent.output', pipeline, cwd 
         proc.on('close', (code) => {
             timeout.clear();
             const durationMs = Date.now() - startedAt;
-            publishCompleted(pipeline, agent, durationMs, code);
+            publishCompleted(pipeline, agent, durationMs, code, capturedTaskId);
             if (timeout.wasKilled()) {
                 // Streams were already torn down when the timeout fired.
                 reject(new Error(`${agent.name} timed out after ${agent.timeout}ms`));

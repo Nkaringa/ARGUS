@@ -158,6 +158,12 @@ function startWatcher(mode = 'build') {
     };
     watcher.on('add', dispatch);
     watcher.on('change', dispatch);
+    // When a matched file is removed (archive move, manual delete), drop its stale
+    // lastContent entry. Without this, if the same path is recreated later (e.g. a
+    // continuation task after archival), the next delta is computed against the
+    // old file's content, which can strip the iteration/grade marker out of the
+    // delta and silently hang the pipeline in building/auditing.
+    watcher.on('unlink', (fp) => { lastContent.delete(fp); });
 
     const watchLabel = mode === 'warzone'
         ? '*-WarZone.md'
