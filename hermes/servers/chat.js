@@ -136,6 +136,9 @@ app.post('/chat', (req, res) => {
         outputTopic: 'chat.output',
         pipeline: 'chat',
         cwd: agentCwd,
+        // Chat has no task concept. Pass null explicitly so chat.agent.completed
+        // rows are unattributed by design (not by accident). Unify later.
+        taskId: null,
     }).catch((err) => {
         broadcast({ type: 'chat_output', agent, line: `[error] ${err.message}` });
     });

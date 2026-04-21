@@ -34,7 +34,7 @@ let service;
 
 function launchPlanner() {
     if (!currentTask) return;
-    logEvent('agent.started', { role: 'plan', task: currentTask, mode: currentMode, slug: currentSlug });
+    logEvent('agent.started', { role: 'plan', task: currentTask, mode: currentMode, slug: currentSlug }, currentTaskId);
 
     let plannerPrompt;
     if (currentMode === 'continue' && currentSlug) {
@@ -69,10 +69,10 @@ Scope rules:
 - Do NOT write code — Gemini will implement from your plan.`;
     }
 
-    runAgent('planner', plannerPrompt, { outputTopic: 'build.output', pipeline: 'build' })
+    runAgent('planner', plannerPrompt, { outputTopic: 'build.output', pipeline: 'build', taskId: currentTaskId })
         .catch((err) => {
             console.error('[workflow] Plan failed:', err.message);
-            logEvent('agent.failed', { role: 'plan', error: err.message });
+            logEvent('agent.failed', { role: 'plan', error: err.message }, currentTaskId);
             service.send({ type: 'PLAN_FAILED' });
         });
 }
@@ -83,12 +83,12 @@ function launchBuilder() {
         // Shouldn't happen — plan.completed sets slug before BUILD transition.
         // Surface loudly rather than build with literal "null-Build-Log.md".
         console.error('[workflow] launchBuilder called without currentSlug');
-        logEvent('agent.failed', { role: 'build', error: 'currentSlug missing' });
+        logEvent('agent.failed', { role: 'build', error: 'currentSlug missing' }, currentTaskId);
         service.send({ type: 'BUILD_FAILED' });
         return;
     }
     iterationCount++;
-    logEvent('agent.started', { role: 'build', task: currentTask, iteration: iterationCount });
+    logEvent('agent.started', { role: 'build', task: currentTask, iteration: iterationCount }, currentTaskId);
 
     const planFile     = `${currentSlug}-Plan.md`;
     const buildLogFile = `${currentSlug}-Build-Log.md`;
@@ -110,10 +110,10 @@ Scope rules (strict):
 
 Task: ${currentTask}${revisionNote}${logReminder}`;
 
-    runAgent('builder', buildPrompt, { outputTopic: 'build.output', pipeline: 'build' })
+    runAgent('builder', buildPrompt, { outputTopic: 'build.output', pipeline: 'build', taskId: currentTaskId })
         .catch((err) => {
             console.error('[workflow] Build failed:', err.message);
-            logEvent('agent.failed', { role: 'build', error: err.message });
+            logEvent('agent.failed', { role: 'build', error: err.message }, currentTaskId);
             service.send({ type: 'BUILD_FAILED' });
         });
 }
@@ -121,11 +121,11 @@ Task: ${currentTask}${revisionNote}${logReminder}`;
 function launchAuditor() {
     if (!currentSlug) {
         console.error('[workflow] launchAuditor called without currentSlug');
-        logEvent('agent.failed', { role: 'audit', error: 'currentSlug missing' });
+        logEvent('agent.failed', { role: 'audit', error: 'currentSlug missing' }, currentTaskId);
         service.send({ type: 'AUDIT_FAILED' });
         return;
     }
-    logEvent('agent.started', { role: 'audit' });
+    logEvent('agent.started', { role: 'audit' }, currentTaskId);
 
     const planFile     = `${currentSlug}-Plan.md`;
     const buildLogFile = `${currentSlug}-Build-Log.md`;
@@ -140,10 +140,10 @@ Scope rules:
 - Write ONLY to ${feedbackFile}.
 - Do NOT modify any other file. Do NOT read or reference anything outside the project root (hermes/, argus-ui/, landing/, role-doc folders, or any parent/sibling directory are argus's own codebase, not the audit target).
 - Do NOT read or write anything inside Build-History/.`;
-    runAgent('codex_auditor', auditPrompt, { outputTopic: 'build.output', pipeline: 'build' })
+    runAgent('codex_auditor', auditPrompt, { outputTopic: 'build.output', pipeline: 'build', taskId: currentTaskId })
         .catch((err) => {
             console.error('[workflow] Audit failed:', err.message);
-            logEvent('agent.failed', { role: 'audit', error: err.message });
+            logEvent('agent.failed', { role: 'audit', error: err.message }, currentTaskId);
             service.send({ type: 'AUDIT_FAILED' });
         });
 }
@@ -226,7 +226,7 @@ service = createActor(hermesMachine.provide({
         onDone: () => {
             if (currentTaskId) {
                 completeTask(currentTaskId, iterationCount, lastGrade, 'DONE');
-                logEvent('task.done', { taskId: currentTaskId, iterations: iterationCount });
+                logEvent('task.done', { taskId: currentTaskId, iterations: iterationCount }, currentTaskId);
                 if (broadcastFn) broadcastFn({ type: 'history', items: getHistory() });
             }
             // Archive the just-completed task's meta files immediately so the history
@@ -285,7 +285,7 @@ function startWorkflow() {
                 logEvent('agent.failed', {
                     role: 'plan',
                     error: `slug mismatch: expected ${currentSlug}, got ${parsedSlug}`,
-                });
+                }, currentTaskId);
                 service.send({ type: 'PLAN_FAILED' });
                 return;
             }
@@ -307,7 +307,7 @@ function startWorkflow() {
                 logEvent('agent.failed', {
                     role: 'plan',
                     error: `invalid slug: ${parsedSlug}`,
-                });
+                }, currentTaskId);
                 service.send({ type: 'PLAN_FAILED' });
                 return;
             }
@@ -337,7 +337,7 @@ function startWorkflow() {
             console.warn(`[workflow] Ignoring grade.received for unrelated file: ${payload.file}`);
             return;
         }
-        logEvent('grade.received', payload);
+        logEvent('grade.received', payload, currentTaskId);
         lastGrade = payload.grade;
         if (payload.grade === 'A') {
             service.send({ type: 'GRADE_A' });
@@ -379,7 +379,7 @@ function submitTask(description, opts = {}) {
     currentSlug = mode === 'continue' ? slug : null;
     iterationCount = 0;
     currentTaskId = createTask(description);
-    logEvent('task.submitted', { description, mode, slug: currentSlug });
+    logEvent('task.submitted', { description, mode, slug: currentSlug }, currentTaskId);
     service.send({ type: 'TASK_SUBMITTED' });
 }
 
@@ -393,7 +393,7 @@ function sendApproval(action) {
     } else if (action === 'abort') {
         if (currentTaskId) {
             completeTask(currentTaskId, iterationCount, lastGrade, 'CANCELLED');
-            logEvent('task.aborted', { taskId: currentTaskId });
+            logEvent('task.aborted', { taskId: currentTaskId }, currentTaskId);
             if (broadcastFn) broadcastFn({ type: 'history', items: getHistory() });
         }
         // Archive on abort too so the timing is symmetric with onDone — partial meta

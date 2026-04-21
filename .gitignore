@@ -23,9 +23,13 @@ hermes/.env.local
 Build-History/
 WarZone-History/
 
-# Runtime database
+
+# Runtime database (per-install). WAL mode creates -wal and -shm auxiliary files
+# that are per-connection state and should never be committed either.
 hermes/hermes.db
 hermes/hermes.db-journal
+hermes/hermes.db-wal
+hermes/hermes.db-shm
 
 # ─── Build output ─────────────────────────────────────────────
 argus-ui/dist/
@@ -46,3 +50,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# ─── Internal memory (not for GitHub) ─────────────────────────
+docs/

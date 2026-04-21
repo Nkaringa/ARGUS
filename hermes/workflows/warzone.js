@@ -91,10 +91,12 @@ Create \`<slug>-WarZone.md\` and append the following block (substituting the sl
 Gemini and Codex will append to the same \`<slug>-WarZone.md\`. Pick a slug they'd be happy seeing reused.`;
     }
 
-    logEvent('discuss.started', { role: 'claude', idea: currentIdea, slug: currentDiscussionSlug });
-    runAgent('discuss_planner', prompt, { outputTopic: 'warzone.output', pipeline: 'warzone' }).catch((err) => {
+    // Warzone has no unified task_id today (uses currentDiscussionSlug instead).
+    // Passing null explicitly documents the gap — file "unify task model across pipelines" as future work.
+    logEvent('discuss.started', { role: 'claude', idea: currentIdea, slug: currentDiscussionSlug }, null);
+    runAgent('discuss_planner', prompt, { outputTopic: 'warzone.output', pipeline: 'warzone', taskId: null }).catch((err) => {
         console.error('[warzone] discuss_planner failed:', err.message);
-        logEvent('discuss.failed', { role: 'claude', error: err.message });
+        logEvent('discuss.failed', { role: 'claude', error: err.message }, null);
         service.send({ type: 'ABORT' });
     });
 }
@@ -115,10 +117,10 @@ Read ${file}. Find the latest Discussion entry. Append to that same entry block:
 **Builder Status:** DONE
 
 Do not modify anything above #### Gemini's Build Approach. Only append to ${file}.`;
-    logEvent('discuss.started', { role: 'gemini', slug: currentDiscussionSlug });
-    runAgent('discuss_builder', prompt, { outputTopic: 'warzone.output', pipeline: 'warzone' }).catch((err) => {
+    logEvent('discuss.started', { role: 'gemini', slug: currentDiscussionSlug }, null);
+    runAgent('discuss_builder', prompt, { outputTopic: 'warzone.output', pipeline: 'warzone', taskId: null }).catch((err) => {
         console.error('[warzone] discuss_builder failed:', err.message);
-        logEvent('discuss.failed', { role: 'gemini', error: err.message });
+        logEvent('discuss.failed', { role: 'gemini', error: err.message }, null);
         service.send({ type: 'ABORT' });
     });
 }
@@ -139,10 +141,10 @@ Read ${file}. Find the latest Discussion entry. Append to that same entry block:
 **Auditor Status:** READY TO BUILD
 
 Do not modify anything above #### Codex's Audit. Only append to ${file}.`;
-    logEvent('discuss.started', { role: 'codex', slug: currentDiscussionSlug });
-    runAgent('discuss_codex', prompt, { outputTopic: 'warzone.output', pipeline: 'warzone' }).catch((err) => {
+    logEvent('discuss.started', { role: 'codex', slug: currentDiscussionSlug }, null);
+    runAgent('discuss_codex', prompt, { outputTopic: 'warzone.output', pipeline: 'warzone', taskId: null }).catch((err) => {
         console.error('[warzone] discuss_codex failed:', err.message);
-        logEvent('discuss.failed', { role: 'codex', error: err.message });
+        logEvent('discuss.failed', { role: 'codex', error: err.message }, null);
         service.send({ type: 'ABORT' });
     });
 }
@@ -236,7 +238,7 @@ function startWarzoneWorkflow() {
             // kebab-case contract — else it poisons every subsequent prompt and path.
             if (!isValidTaskSlug(m[1])) {
                 console.warn(`[warzone] Planner produced invalid slug "${m[1]}" — aborting.`);
-                logEvent('discuss.failed', { role: 'claude', error: `invalid slug: ${m[1]}` });
+                logEvent('discuss.failed', { role: 'claude', error: `invalid slug: ${m[1]}` }, null);
                 service.send({ type: 'ABORT' });
                 return;
             }
@@ -279,7 +281,7 @@ function submitDiscuss(idea) {
         throw new Error('A discussion is already running');
     }
     currentIdea = idea;
-    logEvent('discuss.submitted', { idea, slug: currentDiscussionSlug });
+    logEvent('discuss.submitted', { idea, slug: currentDiscussionSlug }, null);
     service.send({ type: 'DISCUSS_SUBMITTED' });
 }
 
@@ -303,7 +305,7 @@ function newDiscussion() {
     const archivedSlug = currentDiscussionSlug;
     currentDiscussionSlug = null;
     currentIdea = null;
-    logEvent('discuss.new', { archivedSlug });
+    logEvent('discuss.new', { archivedSlug }, null);
     // If we were sitting in awaiting_discuss_approval, drop back to idle so the UI
     // reflects "ready for a new discussion" immediately.
     if (snap === 'awaiting_discuss_approval') {
