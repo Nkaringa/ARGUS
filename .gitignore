@@ -43,6 +43,8 @@ landing/
 # ─── Logs ─────────────────────────────────────────────────────
 *.log
 npm-debug.log*
+# Eval seed fixtures (deterministic inputs committed to the repo).
+!evals/seed/**/*.log
 
 # ─── OS / editor ──────────────────────────────────────────────
 .DS_Store
