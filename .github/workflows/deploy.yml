@@ -1,0 +1,24 @@
+name: Deploy to Production
+
+# Triggers on every push to main — pushing to main IS a deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-backend:
+    name: Redeploy hermes on Oracle VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH into VM, pull latest code, rebuild hermes container
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.ORACLE_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ~/ARGUS
+            git pull origin main
+            docker compose up -d --build hermes
+            docker compose ps

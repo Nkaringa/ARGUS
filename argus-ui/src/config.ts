@@ -1,25 +1,23 @@
-const host = import.meta.env.VITE_HOST || 'localhost';
-const chatPort = import.meta.env.VITE_CHAT_PORT || '3001';
-const buildPort = import.meta.env.VITE_BUILD_PORT || '3002';
+const host        = import.meta.env.VITE_HOST        || 'localhost';
+const chatPort    = import.meta.env.VITE_CHAT_PORT    || '3001';
+const buildPort   = import.meta.env.VITE_BUILD_PORT   || '3002';
 const warzonePort = import.meta.env.VITE_WARZONE_PORT || '3003';
 
-const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+// Production: set VITE_CHAT_HOST / VITE_BUILD_HOST / VITE_WARZONE_HOST to full
+// Cloudflare tunnel subdomains. Cloudflare is always :443 — no port suffix needed.
+// Local dev: leave unset — falls back to host:port (e.g. localhost:3001).
+const chatHost    = import.meta.env.VITE_CHAT_HOST    || `${host}:${chatPort}`;
+const buildHost   = import.meta.env.VITE_BUILD_HOST   || `${host}:${buildPort}`;
+const warzoneHost = import.meta.env.VITE_WARZONE_HOST || `${host}:${warzonePort}`;
+
+const isSecure  = typeof window !== 'undefined' && window.location.protocol === 'https:';
 const httpProto = isSecure ? 'https' : 'http';
-const wsProto = isSecure ? 'wss' : 'ws';
+const wsProto   = isSecure ? 'wss'   : 'ws';
 
 export const SERVERS = {
-  chat: {
-    http: `${httpProto}://${host}:${chatPort}`,
-    ws: `${wsProto}://${host}:${chatPort}`,
-  },
-  build: {
-    http: `${httpProto}://${host}:${buildPort}`,
-    ws: `${wsProto}://${host}:${buildPort}`,
-  },
-  warzone: {
-    http: `${httpProto}://${host}:${warzonePort}`,
-    ws: `${wsProto}://${host}:${warzonePort}`,
-  },
+  chat:    { http: `${httpProto}://${chatHost}`,    ws: `${wsProto}://${chatHost}`    },
+  build:   { http: `${httpProto}://${buildHost}`,   ws: `${wsProto}://${buildHost}`   },
+  warzone: { http: `${httpProto}://${warzoneHost}`, ws: `${wsProto}://${warzoneHost}` },
 };
 
 // Auth helpers — used by all hooks.

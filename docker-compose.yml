@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+
+  # ── NATS message bus ────────────────────────────────────────────────────────
+  nats:
+    image: nats:2.10-alpine
+    container_name: argus_nats
+    restart: always
+    networks:
+      - argus_net
+
+  # ── Hermes orchestration engine (chat + build + warzone servers) ────────────
+  hermes:
+    build:
+      context: .            # repo root — required so COPY can reach .claude/.gemini/.codex
+      dockerfile: Dockerfile
+    container_name: argus_hermes
+    restart: always
+    depends_on:
+      - nats
+    environment:
+      # Route NATS to the container instead of localhost (fixes the hardcoded URL
+      # in core/events.js — now reads process.env.NATS_URL with localhost fallback)
+      - NATS_URL=nats://nats:4222
+
+      # Agent workspace — all build artefacts written here by claude/gemini/codex
+      - WORK_DIR=/workspace
+
+      # Separate dir for Gemini chat sessions so chat output doesn't pollute Build-Log.md
+      - CHAT_DIR=/tmp/argus-chat
+
+      # Server ports (must match Cloudflare tunnel public hostname config)
+      - CHAT_PORT=3001
+      - BUILD_PORT=3002
+      - WARZONE_PORT=3003
+
+      # 0.0.0.0 required — Cloudflare tunnel connects from outside the container network
+      - BIND_HOST=0.0.0.0
+
+      - NODE_ENV=production
+
+      # SQLite DB path — core/db.js already reads HERMES_DB_PATH with a fallback.
+      # Pointing it at /data keeps the DB on its own named volume, separate from
+      # the hermes/ source tree (mounting /app/hermes would shadow source code).
+      - HERMES_DB_PATH=/data/hermes.db
+
+      # Set ALLOWED_ORIGIN to your Cloudflare Pages URL once it is known.
+      # Falls back to localhost:5173 so the container starts cleanly before Pages is set up.
+      - ALLOWED_ORIGIN=${ALLOWED_ORIGIN:-http://localhost:5173}
+
+      # Shared secret for HTTP + WebSocket auth. Generate with: openssl rand -hex 32
+      # Must match VITE_API_KEY set in the Cloudflare Pages environment variables.
+      - API_KEY=${API_KEY}
+
+    volumes:
+      # Agent build artefacts — survive container rebuilds and redeployments
+      - workspace_data:/workspace
+
+      # SQLite database — isolated from source code, survives rebuilds
+      - db_data:/data
+
+      # CLI OAuth credential directories from the VM host.
+      # Each CLI authenticates via browser OAuth once on the VM, storing tokens here.
+      # Mounted read-only — the container never writes back to the host credential dirs.
+      - /home/ubuntu/.claude:/root/.claude:ro
+      - /home/ubuntu/.gemini:/root/.gemini:ro
+      - /home/ubuntu/.codex:/root/.codex:ro
+
+    ports:
+      - "3001:3001"
+      - "3002:3002"
+      - "3003:3003"
+
+    networks:
+      - argus_net
+
+# ── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  workspace_data:   # WORK_DIR — agent build artefacts
+  db_data:          # hermes.db — SQLite event log + task history
+
+# ── Internal network ──────────────────────────────────────────────────────────
+networks:
+  argus_net:
+    driver: bridge
