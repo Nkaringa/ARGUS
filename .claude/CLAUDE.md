@@ -37,15 +37,22 @@ Either way, the plan file is `<slug>-Plan.md` at the project root and the delive
    - Examples: a landing-page task → `landing-page`; a portfolio site → `portfolio`; a CLI for ticket triage → `ticket-triage-cli`.
    - Pick a slug you'd be happy seeing on three meta files (`<slug>-Plan.md`, `<slug>-Build-Log.md`, `<slug>-Build-Feedback.md`) and on the `<slug>/` deliverable folder.
    **For a continuation:** the slug is fixed by Hermes. Read the existing files in `<slug>/` first.
-3. Identify the files that need to be created or modified — paths under `<slug>/` (e.g. `<slug>/index.html`).
-4. Decide on an approach — enough detail that Gemini can implement without guessing, but not so much that it constrains good judgment on details.
-5. Call out gotchas: edge cases, dependencies, ordering requirements.
-6. Write the **Acceptance Criteria** — a bullet list of independently verifiable assertions that must hold true for the build to pass. Each bullet is one concrete, observable behavior or structural property Codex can mechanically check. Gemini uses the same bullets as a self-check before emitting the build log.
+3. **Design the architecture** — the framework-level decisions that everything else depends on:
+   - **Stack** — framework + library choices, with versions where they matter. One line of reasoning per choice.
+   - **Directory Structure** — the top-level tree. Where does what live.
+   - **Cross-Cutting Concerns** — styling tokens, state management approach, shared primitives, naming conventions. The things that span files and can't live inside any one "File to Touch."
+   - **Rejected Alternatives** (optional) — what you considered and did not pick, and why, in one line each. Use this when the default choice might look like the obvious pick but isn't.
+
+   **Scale the depth to the task.** A quick script gets two bullets total; a real project approaches a full technical blueprint with versions and rationale. A 300-line Architecture section on a 50-line deliverable is over-engineering — you will lose Gemini's trust and produce audit noise for Codex.
+4. Identify the files that need to be created or modified — paths under `<slug>/` (e.g. `<slug>/index.html`). File paths should align with the Directory Structure you just defined.
+5. Decide on an approach — enough detail that Gemini can implement without guessing, but not so much that it constrains good judgment on details.
+6. Call out gotchas: edge cases, dependencies, ordering requirements.
+7. Write the **Acceptance Criteria** — a bullet list of independently verifiable assertions that must hold true for the build to pass. Each bullet is one concrete, observable behavior or structural property Codex can mechanically check. Gemini uses the same bullets as a self-check before emitting the build log.
    - Good: *"Login form rejects passwords shorter than 8 characters with a visible error message."* / *"Password is hashed with bcrypt (cost ≥ 10) before storage."* / *"Session cookie is set with HttpOnly, Secure, and SameSite=Lax."*
    - Bad: *"The UI looks professional."* / *"Handles errors gracefully."* / *"Works on all screen sizes."* — none of these are independently checkable.
    - Aim for 4–12 bullets on most tasks. Fewer = the plan underspecifies what "done" means; more = you are over-constraining.
-7. Write `<slug>-Plan.md` at the project root. For a continuation, this overwrites the prior iteration's plan (Hermes archived it before invoking you).
-8. End the file with the exact line `**Plan Status:** READY`. Hermes watches for this and cannot advance without it.
+8. Write `<slug>-Plan.md` at the project root. For a continuation, this overwrites the prior iteration's plan (Hermes archived it before invoking you).
+9. End the file with the exact line `**Plan Status:** READY`. Hermes watches for this and cannot advance without it.
 
 ---
 
@@ -56,6 +63,12 @@ Either way, the plan file is `<slug>-Plan.md` at the project root and the delive
 
 ## Goal
 [One paragraph: what we are building and why]
+
+## Architecture
+**Stack:** [framework + libraries + versions, one line of reasoning per choice]
+**Directory Structure:** [top-level tree]
+**Cross-Cutting Concerns:** [styling tokens, state approach, shared primitives, naming]
+**Rejected Alternatives:** [optional, one line each]
 
 ## Files to Touch
 - `<slug>/path/to/file.ext` — [what changes]

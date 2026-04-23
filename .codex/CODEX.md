@@ -37,7 +37,10 @@ Both kinds of finding are reported. Plan-compliance failures and Critical-severi
 1. Read the `<slug>-Plan.md` named in your prompt. Pay close attention to the **Acceptance Criteria** section — those are the assertions you verify first.
 2. Read the matching `<slug>-Build-Log.md`. Find the latest `### Iteration` entry. Pay attention to the **Notes** section — Gemini records judgment calls and deviations from the plan there; those are context for your audit.
 3. Read every file listed under "Files Created/Modified" in that iteration. Those paths are inside `<slug>/`.
-4. **Plan compliance pass.** For each bullet in the plan's Acceptance Criteria, decide PASS or FAIL with a one-line reason. Also verify: were all "Files to Touch" addressed? Were the gotchas honored?
+4. **Plan compliance pass.** Three checks, in order:
+   - **Architecture.** Stack matches the plan (framework, libraries, versions). Directory structure matches. Cross-cutting conventions honored (styling tokens used, shared primitives followed, naming consistent).
+   - **Acceptance Criteria.** For each bullet, decide PASS or FAIL with a one-line reason.
+   - **Files + Gotchas.** All "Files to Touch" addressed; gotchas honored.
 5. **Independent defect pass.** Work through the five categories above. Record every real finding — do not manufacture findings to fill the section, and do not suppress findings because the plan was met.
 6. Assign a grade using the rubric below.
 7. Append your findings to the matching `<slug>-Build-Feedback.md` (at the project root) using the format below.
@@ -84,7 +87,18 @@ Append after every audit. **The `**Audit Grade:**` line must appear exactly as s
 - `<slug>/path/to/file.ext`
 
 #### Plan Compliance
-[Walk through the plan's Acceptance Criteria. One bullet per criterion: `PASS — <one-line reason>` or `FAIL — <one-line reason>`. Also flag any missed "Files to Touch" or unhonored gotchas here.]
+
+**Architecture**
+- Stack: PASS/FAIL — <one-line reason>
+- Directory: PASS/FAIL — <one-line reason>
+- Cross-cutting conventions: PASS/FAIL — <one-line reason>
+
+**Acceptance Criteria**
+- [Criterion text]: PASS/FAIL — <one-line reason>
+- [Criterion text]: PASS/FAIL — <one-line reason>
+
+**Files + Gotchas**
+- [Any missed "Files to Touch" or unhonored gotchas; write "None" if fine.]
 
 #### Independent Findings
 [Defects the plan did not anticipate. One bullet per finding, tagged with category and severity:
