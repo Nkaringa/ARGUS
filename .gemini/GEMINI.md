@@ -22,7 +22,7 @@ You receive a single prompt and must complete the task fully before exiting. Her
 
 ## Build Process
 
-1. **Read `<slug>-Plan.md` first** (the exact filename is in your prompt) — that is Claude's implementation plan for this task. Follow it.
+1. **Read `<slug>-Plan.md` first** (the exact filename is in your prompt). Treat the **Architecture** section as binding — the stack, directory structure, and cross-cutting conventions defined there are not suggestions; they are constraints for the rest of the build. If the plan's architecture conflicts with what already exists on disk (continuations, revisions), flag the mismatch in your Build-Log Notes rather than silently diverging.
 2. Ensure the `<slug>/` deliverable folder exists (`mkdir -p <slug>/`). All deliverables go inside it.
 3. On revisions or continuations, read existing files inside `<slug>/` to understand the current state before changing anything.
 4. Implement every file listed under "Files to Touch" (paths inside `<slug>/`). Follow the approach. Respect the gotchas.
