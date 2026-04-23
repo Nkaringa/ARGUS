@@ -4,7 +4,26 @@ const path = require('path');
 const { publish } = require('./events');
 const { parseTaskFile, parseWarzoneFile } = require('./archive');
 
-const WORK_DIR = process.env.WORK_DIR;
+// Resolve WORK_DIR to its canonical on-disk case. macOS APFS is case-insensitive but
+// case-preserving: `cd` and fs.readFile find the dir regardless of case, but fsevents
+// reports paths with the real on-disk case, and chokidar's glob matcher is case-SENSITIVE.
+// If .env says `/path/Karinga.dev` but disk has `karinga.dev`, every event gets silently
+// dropped and the pipeline hangs. realpathSync collapses this class of bug before the
+// glob pattern is ever built. Falls back to the raw value if resolution fails — the env
+// validator in servers/*.js reports the missing dir separately.
+const WORK_DIR = (() => {
+    const raw = process.env.WORK_DIR;
+    if (!raw) return raw;
+    try {
+        const resolved = fs.realpathSync(raw);
+        if (resolved !== raw) {
+            console.log(`[watcher] WORK_DIR normalized to canonical case: "${raw}" → "${resolved}"`);
+        }
+        return resolved;
+    } catch {
+        return raw;
+    }
+})();
 
 // Build pipeline files: <slug>-Plan.md, <slug>-Build-Log.md, <slug>-Build-Feedback.md.
 // Warzone discussion file: <slug>-WarZone.md.
@@ -75,10 +94,19 @@ function startWatcher(mode = 'build') {
         ? (name) => parseWarzoneFile(name) !== null
         : (name) => parseTaskFile(name) !== null);
 
+    // Ignore high-churn subtrees. fsevents on macOS reports events for the ENTIRE
+    // WORK_DIR subtree (not just our top-level glob), so when WORK_DIR is pointed at
+    // a real project root, node_modules/.next/.git activity can flood fsevents into
+    // coalesced mode — new `*-Plan.md` / `*-WarZone.md` creations then get lost in
+    // the noise and the watcher never fires. Dropping these paths at chokidar's
+    // input layer keeps the queue responsive to the events that actually matter.
+    const IGNORED_SUBTREES = /(?:^|[\\/])(?:node_modules|\.next|\.git|\.DS_Store|dist|build|\.turbo|\.vercel|coverage|\.cache)(?:[\\/]|$)/;
+
     const watcher = chokidar.watch(filesToWatch, {
         persistent: true,
         ignoreInitial: true,
         awaitWriteFinish: { stabilityThreshold: 1000, pollInterval: 200 },
+        ignored: IGNORED_SUBTREES,
     });
 
     const handleBuildFile = (filePath) => {

@@ -1,19 +1,39 @@
 @import "tailwindcss";
 
 :root {
-  --sidebar-width: 280px;
-  --bmw-blue: #1c69d4;
-  --bmw-focus: #0653b6;
-  --bmw-ink: #262626;
-  --bmw-meta: #757575;
-  --bmw-silver: #bbbbbb;
-  --font-display: 'BMWTypeNextLatin Light', 'Helvetica', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', sans-serif;
-  --font-body: 'BMWTypeNextLatin', 'Helvetica', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', sans-serif;
+  /* Layout */
+  --sidebar-width: 240px;
+  --statusbar-height: 48px;
+
+  /* Palette — dark terminal (mockup-derived) */
+  --bg:         #0c0c0d;
+  --bg-2:       #131315;
+  --bg-3:       #17171a;
+  --bg-hover:   #1c1c20;
+  --ink:        #e8e4db;
+  --ink-dim:    #8d8a84;
+  --ink-dimmer: #55534f;
+  --rule:       #222224;
+  --rule-hot:   #2d2d30;
+  --accent:     #c4ff3d;
+  --accent-ink: #0c0c0d;
+  --accent-dim: #8dba24;
+  --warn:       #ff6a3d;
+  --ok:         #7bd88f;
+
+  /* Per-agent color coding — lets the user scan output streams at a glance
+     without reading the agent tag on every line. */
+  --claude:     #d97757;
+  --gemini:     #5b9cff;
+  --codex:      #b084ff;
+
+  /* Typography — JetBrains Mono for body + labels + logs (the terminal-feel workhorse),
+     Space Grotesk for display headings (gives headlines a typographic voice that mono can't). */
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 html, body, #root {
   height: 100%;
@@ -22,16 +42,41 @@ html, body, #root {
 }
 
 body {
-  background: #ffffff;
-  color: #262626;
+  background: var(--bg);
+  color: var(--ink);
   font-family: var(--font-body);
+  font-size: 13px;
   font-weight: 400;
-  line-height: 1.15;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* Subtle scanlines — signature terminal texture, visible but non-distracting. */
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.012) 0px,
+    rgba(255, 255, 255, 0.012) 1px,
+    transparent 1px,
+    transparent 3px
+  );
 }
 
-/* Zero-radius scrollbar — BMW is sharp-cornered everywhere */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #bbbbbb; border-radius: 0; }
-::-webkit-scrollbar-thumb:hover { background: #757575; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+a { color: inherit; text-decoration: none; }
+button, select, textarea, input {
+  font-family: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+::-webkit-scrollbar      { width: 6px; height: 6px; }
+::-webkit-scrollbar-track{ background: transparent; }
+::-webkit-scrollbar-thumb{ background: var(--rule-hot); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-dimmer); }
+
+/* Keyframes shared across components */
+@keyframes blink  { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.2; } }
+@keyframes pulse  { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes ticker { to { transform: translateX(-100%); } }
+@keyframes caret  { 50% { opacity: 0; } }

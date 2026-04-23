@@ -7,11 +7,7 @@ interface ResetSessionsModalProps {
 
 /**
  * Documentation-only modal. No fetch, no backend call, no state mutation.
- *
- * Argus spawns each agent CLI fresh on every task — there are no session UUIDs
- * to manage. If a CLI's vendor auth (Claude Code login, Gemini CLI login, Codex
- * CLI login) expires, the user just re-authenticates that CLI in a terminal
- * and Argus picks up the refreshed auth on the next invocation.
+ * Tells the user how to re-authenticate a CLI when its vendor auth expires.
  */
 export function ResetSessionsModal({ open, onClose }: ResetSessionsModalProps) {
   useEffect(() => {
@@ -28,132 +24,153 @@ export function ResetSessionsModal({ open, onClose }: ResetSessionsModalProps) {
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.8)' }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 300,
+        background: 'rgba(0, 0, 0, 0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 40,
+      }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white text-[#262626]"
-        style={{ width: 640, padding: 48 }}
+        style={{
+          width: '100%',
+          maxWidth: 640,
+          maxHeight: '100%',
+          background: 'var(--bg-2)',
+          border: '1px solid var(--rule)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
       >
-        <div className="flex items-start justify-between mb-6">
-          <h2
-            className="uppercase"
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontWeight: 300,
-              fontSize: 48,
-              lineHeight: 1.3,
-              letterSpacing: '0.02em',
-            }}
-          >
-            Refresh Agent Auth
-          </h2>
+        {/* Header */}
+        <div
+          style={{
+            padding: '16px 24px',
+            borderBottom: '1px solid var(--rule)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontSize: 10,
+            letterSpacing: '0.16em',
+            color: 'var(--ink-dimmer)',
+            textTransform: 'uppercase',
+          }}
+        >
+          <span style={{ color: 'var(--accent)' }}>▸</span>
+          refresh agent auth
           <button
             onClick={onClose}
-            className="uppercase text-[14px] text-[#262626] hover:text-[#1c69d4] transition-colors"
             style={{
-              fontWeight: 400,
-              letterSpacing: '0.15em',
-              borderBottom: '1px solid currentColor',
-              paddingBottom: 2,
+              marginLeft: 'auto',
+              fontSize: 10,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-dim)',
+              padding: '4px 10px',
+              border: '1px solid var(--rule)',
+              background: 'transparent',
+              cursor: 'pointer',
+              transition: 'color 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--accent)';
+              e.currentTarget.style.borderColor = 'var(--accent)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--ink-dim)';
+              e.currentTarget.style.borderColor = 'var(--rule)';
             }}
           >
-            Close
+            close (esc)
           </button>
         </div>
 
-        <p
-          className="text-[#262626]"
-          style={{ fontSize: 16, lineHeight: 1.3, fontWeight: 400 }}
-        >
-          Argus spawns each agent CLI fresh on every task — no session state
-          to manage, nothing to rotate. If an agent starts failing with an
-          auth/login error, re-authenticate the CLI directly in your terminal.
-          Argus picks up the refreshed auth on the next invocation with no
-          restart needed.
-        </p>
+        {/* Body */}
+        <div style={{ padding: '24px', overflowY: 'auto' }}>
+          <h2
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 28,
+              fontWeight: 500,
+              lineHeight: 1,
+              letterSpacing: '-0.02em',
+              color: 'var(--ink)',
+              marginBottom: 16,
+            }}
+          >
+            re-authenticate a cli
+          </h2>
 
-        <h3
-          className="uppercase mt-10 mb-4"
-          style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 900,
-            fontSize: 18,
-            letterSpacing: '0.15em',
-          }}
-        >
-          Re-authenticate a CLI
-        </h3>
+          <p
+            style={{
+              color: 'var(--ink-dim)',
+              fontSize: 13,
+              lineHeight: 1.6,
+              marginBottom: 20,
+            }}
+          >
+            if an agent is failing with an auth or login error, re-authenticate
+            its cli directly in your terminal. argus picks up the refreshed auth
+            on the next invocation.
+          </p>
 
-        <div className="space-y-4">
-          <CodeBlock
-            label="Claude"
-            lines={[
-              'claude',
-              '# follow the login prompt if auth has expired',
-              '# /exit once you see the prompt',
-            ]}
-          />
-          <CodeBlock
-            label="Gemini"
-            lines={[
-              'gemini',
-              '# follow the login prompt if auth has expired',
-              '# /exit once you see the prompt',
-            ]}
-          />
-          <CodeBlock
-            label="Codex"
-            lines={[
-              'codex',
-              '# follow the login prompt if auth has expired',
-              '# exit once you see the prompt',
-            ]}
-          />
+          <pre
+            style={{
+              background: 'var(--bg-3)',
+              border: '1px solid var(--rule)',
+              padding: '14px 16px',
+              margin: 0,
+              fontFamily: 'var(--font-body)',
+              fontSize: 13,
+              lineHeight: 1.7,
+              color: 'var(--ink)',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            <span style={{ color: 'var(--claude)' }}>claude</span>
+            {'\n'}
+            <span style={{ color: 'var(--gemini)' }}>gemini</span>
+            {'\n'}
+            <span style={{ color: 'var(--codex)' }}>codex</span>
+            {'\n'}
+            <span style={{ color: 'var(--ink-dimmer)' }}>
+              # follow the login prompt, then exit
+            </span>
+          </pre>
+
+          <p
+            style={{
+              marginTop: 20,
+              fontSize: 12,
+              lineHeight: 1.6,
+              color: 'var(--ink-dimmer)',
+            }}
+          >
+            no{' '}
+            <code
+              style={{
+                background: 'var(--bg-3)',
+                color: 'var(--accent)',
+                padding: '1px 6px',
+                fontSize: 11,
+                border: '1px solid var(--rule)',
+              }}
+            >
+              .env
+            </code>{' '}
+            edit, no hermes restart — each cli caches its own auth, and argus
+            reads that cache every time it spawns the cli.
+          </p>
         </div>
-
-        <p
-          className="mt-8"
-          style={{ fontSize: 14, lineHeight: 1.3, color: '#757575' }}
-        >
-          Each CLI caches its auth locally. Argus reads that cache every time
-          it spawns the CLI, so there is no per-agent config inside Argus to
-          touch — no <code className="bg-[#262626] text-white px-1.5 py-0.5">.env</code> edit, no Hermes restart.
-        </p>
       </div>
     </div>
   );
 }
 
-function CodeBlock({ label, lines }: { label: string; lines: string[] }) {
-  return (
-    <div>
-      {label && (
-        <p
-          className="uppercase mb-2"
-          style={{
-            color: '#757575',
-            fontSize: 14,
-            fontWeight: 400,
-            letterSpacing: '0.15em',
-          }}
-        >
-          {label}
-        </p>
-      )}
-      <pre
-        className="bg-[#262626] text-white whitespace-pre-wrap"
-        style={{
-          fontFamily: 'var(--font-body)',
-          fontSize: 14,
-          lineHeight: 1.3,
-          padding: '16px 24px',
-          margin: 0,
-        }}
-      >
-        {lines.join('\n')}
-      </pre>
-    </div>
-  );
-}

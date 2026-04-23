@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { SERVERS, authHeaders } from '../../config';
 import { markdownComponents } from '../shared/markdownComponents';
+import type { WarzoneState } from '../../types';
 
 interface DiscussionSections {
   idea: string | null;
@@ -14,63 +15,96 @@ interface DiscussionSections {
 }
 
 interface DiscussionReviewProps {
-  /** Bumped by the parent when state enters awaiting_discuss_approval so we refetch. */
-  refreshKey?: number | string;
+  /** Current warzone state — drives per-column status (running / done / waiting). */
+  state: WarzoneState;
 }
 
-export function DiscussionReview({ refreshKey }: DiscussionReviewProps) {
+type AgentKey = 'claude' | 'gemini' | 'codex';
+
+const AGENT_CONFIG: Record<
+  AgentKey,
+  { name: string; role: string; activeState: WarzoneState; color: string }
+> = {
+  claude: { name: 'claude', role: 'planner', activeState: 'discussing_claude', color: 'var(--claude)' },
+  gemini: { name: 'gemini', role: 'builder', activeState: 'discussing_gemini', color: 'var(--gemini)' },
+  codex:  { name: 'codex',  role: 'auditor', activeState: 'discussing_codex',  color: 'var(--codex)'  },
+};
+
+const BUSY_STATES: WarzoneState[] = [
+  'discussing_claude',
+  'discussing_gemini',
+  'discussing_codex',
+];
+
+const STATE_ORDER: WarzoneState[] = [
+  'idle',
+  'discussing_claude',
+  'discussing_gemini',
+  'discussing_codex',
+  'awaiting_discuss_approval',
+];
+
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
+}
+
+export function DiscussionReview({ state }: DiscussionReviewProps) {
+  const [sections, setSections] = useState<DiscussionSections | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'empty'>('loading');
   const [error, setError] = useState<string | null>(null);
-  const [sections, setSections] = useState<DiscussionSections | null>(null);
+
+  const fetchDiscussion = useCallback(async () => {
+    try {
+      const res = await fetch(`${SERVERS.warzone.http}/warzone.md`, { headers: authHeaders() });
+      if (res.status === 404) {
+        setStatus('empty');
+        setSections(null);
+        return;
+      }
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${body}`);
+      }
+      const text = await res.text();
+      const parsed = extractLatestDiscussion(text);
+      if (!parsed) {
+        setStatus('empty');
+        setSections(null);
+        return;
+      }
+      setSections(parsed);
+      setStatus('ready');
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus('error');
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setStatus('loading');
-    setError(null);
+    fetchDiscussion();
+    if (!BUSY_STATES.includes(state)) return;
+    const id = setInterval(fetchDiscussion, 3000);
+    return () => clearInterval(id);
+  }, [fetchDiscussion, state]);
 
-    (async () => {
-      try {
-        const res = await fetch(`${SERVERS.warzone.http}/warzone.md`, {
-          headers: authHeaders(),
-        });
-        if (!res.ok) {
-          if (res.status === 404) {
-            if (!cancelled) setStatus('empty');
-            return;
-          }
-          const body = await res.text().catch(() => '');
-          throw new Error(`HTTP ${res.status} ${body}`);
-        }
-        const text = await res.text();
-        const parsed = extractLatestDiscussion(text);
-        if (cancelled) return;
-        if (!parsed) {
-          setStatus('empty');
-          return;
-        }
-        setSections(parsed);
-        setStatus('ready');
-      } catch (err) {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setStatus('error');
-      }
-    })();
+  const [stageStartedAt, setStageStartedAt] = useState<number>(() => Date.now());
+  useEffect(() => {
+    setStageStartedAt(Date.now());
+  }, [state]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey]);
-
-  if (status === 'loading') {
+  if (status === 'loading' && !sections) {
     return (
       <div
         style={{
-          padding: '24px 0',
-          fontSize: 12,
-          color: '#757575',
-          textTransform: 'uppercase',
+          padding: '16px 20px',
+          fontSize: 10,
           letterSpacing: '0.15em',
+          color: 'var(--ink-dim)',
+          textTransform: 'uppercase',
         }}
       >
         Loading discussion...
@@ -80,68 +114,69 @@ export function DiscussionReview({ refreshKey }: DiscussionReviewProps) {
 
   if (status === 'error') {
     return (
-      <div style={{ padding: '24px 0' }}>
+      <div style={{ padding: '16px 20px' }}>
         <p
-          className="uppercase"
           style={{
-            fontSize: 12,
-            fontWeight: 900,
+            fontSize: 10,
+            fontWeight: 700,
             letterSpacing: '0.15em',
-            color: '#262626',
-            marginBottom: 8,
+            color: 'var(--warn)',
+            textTransform: 'uppercase',
+            marginBottom: 6,
           }}
         >
           Failed to load WarZone.md
         </p>
-        <p style={{ fontSize: 14, color: '#757575' }}>{error}</p>
-      </div>
-    );
-  }
-
-  if (status === 'empty' || !sections) {
-    return (
-      <div style={{ padding: '24px 0' }}>
-        <p style={{ fontSize: 14, color: '#757575' }}>
-          No discussion content found in WarZone.md yet.
-        </p>
+        <p style={{ fontSize: 12, color: 'var(--ink-dim)' }}>{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto min-h-0" style={{ background: '#ffffff' }}>
-      {/* Meta header */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minHeight: 0 }}>
+      {sections && (sections.discussionNumber || sections.date || sections.idea) && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 28,
+            flexWrap: 'wrap',
+            padding: '12px 18px',
+            border: '1px solid var(--rule)',
+            background: 'var(--bg-2)',
+          }}
+        >
+          {sections.discussionNumber && (
+            <Meta label="discussion" value={`#${sections.discussionNumber}`} />
+          )}
+          {sections.date && <Meta label="date" value={sections.date} />}
+          {sections.idea && <Meta label="idea" value={sections.idea} wide />}
+        </div>
+      )}
+
       <div
         style={{
-          display: 'flex',
-          gap: 32,
-          padding: '8px 0 24px',
-          borderBottom: '1px solid #bbbbbb',
-          flexWrap: 'wrap',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 18,
+          minHeight: 320,
         }}
       >
-        {sections.discussionNumber && (
-          <Meta label="Discussion" value={`#${sections.discussionNumber}`} />
-        )}
-        {sections.date && <Meta label="Date" value={sections.date} />}
-        {sections.idea && <Meta label="Idea" value={sections.idea} wide />}
+        {(['claude', 'gemini', 'codex'] as AgentKey[]).map((key) => (
+          <AgentColumn
+            key={key}
+            agent={key}
+            body={
+              key === 'claude'
+                ? (sections?.claudePlan ?? '')
+                : key === 'gemini'
+                  ? (sections?.geminiBuild ?? '')
+                  : (sections?.codexAudit ?? '')
+            }
+            state={state}
+            stageStartedAt={stageStartedAt}
+          />
+        ))}
       </div>
-
-      <AgentSection
-        label="Claude"
-        role="Planner"
-        body={sections.claudePlan}
-      />
-      <AgentSection
-        label="Gemini"
-        role="Builder"
-        body={sections.geminiBuild}
-      />
-      <AgentSection
-        label="Codex"
-        role="Auditor"
-        body={sections.codexAudit}
-      />
     </div>
   );
 }
@@ -150,12 +185,11 @@ function Meta({ label, value, wide }: { label: string; value: string; wide?: boo
   return (
     <div style={{ flex: wide ? 1 : undefined, minWidth: 0 }}>
       <div
-        className="uppercase"
         style={{
-          fontSize: 12,
-          fontWeight: 400,
-          letterSpacing: '0.15em',
-          color: '#757575',
+          fontSize: 10,
+          letterSpacing: '0.16em',
+          color: 'var(--ink-dimmer)',
+          textTransform: 'uppercase',
           marginBottom: 4,
         }}
       >
@@ -163,12 +197,12 @@ function Meta({ label, value, wide }: { label: string; value: string; wide?: boo
       </div>
       <div
         style={{
-          fontSize: 14,
-          fontWeight: 400,
-          color: '#262626',
-          lineHeight: 1.3,
+          fontSize: 13,
+          color: 'var(--ink)',
+          lineHeight: 1.4,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
+          whiteSpace: wide ? 'normal' : 'nowrap',
         }}
       >
         {value}
@@ -177,55 +211,104 @@ function Meta({ label, value, wide }: { label: string; value: string; wide?: boo
   );
 }
 
-function AgentSection({ label, role, body }: { label: string; role: string; body: string }) {
+function AgentColumn({
+  agent,
+  body,
+  state,
+  stageStartedAt,
+}: {
+  agent: AgentKey;
+  body: string;
+  state: WarzoneState;
+  stageStartedAt: number;
+}) {
+  const cfg = AGENT_CONFIG[agent];
+  const isActive = state === cfg.activeState;
+  const hasBody = body.trim().length > 0;
+  const isDone = hasBody && !isActive;
+  const thisIdx = STATE_ORDER.indexOf(cfg.activeState);
+  const curIdx = STATE_ORDER.indexOf(state);
+  const isWaiting = !hasBody && !isActive && curIdx < thisIdx;
+
   return (
     <section
       style={{
-        padding: '32px 0',
-        borderBottom: '1px solid #bbbbbb',
+        border: `1px solid ${isActive ? cfg.color : 'var(--rule)'}`,
+        background: 'var(--bg-2)',
+        display: 'flex',
+        flexDirection: 'column',
+        minWidth: 0,
+        // Cap column height so long agent output scrolls WITHIN the column instead
+        // of stretching the page vertically. 65vh leaves breadcrumbs + hero + pipeline
+        // visible above and idea input visible below on typical screens.
+        height: '65vh',
+        maxHeight: '65vh',
       }}
     >
       <header
         style={{
+          padding: '14px 18px',
+          borderBottom: '1px solid var(--rule)',
           display: 'flex',
-          alignItems: 'baseline',
-          gap: 16,
-          marginBottom: 24,
+          flexDirection: 'column',
+          gap: 8,
+          flexShrink: 0,
         }}
       >
-        <h2
-          className="uppercase"
-          style={{
-            fontFamily: 'var(--font-body)',
-            fontSize: 18,
-            fontWeight: 900,
-            letterSpacing: '0.15em',
-            color: '#262626',
-            margin: 0,
-          }}
-        >
-          {label}
-        </h2>
-        <span
-          className="uppercase"
-          style={{
-            fontSize: 12,
-            fontWeight: 400,
-            letterSpacing: '0.15em',
-            color: '#1c69d4',
-          }}
-        >
-          {role}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <h2
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 22,
+              fontWeight: 500,
+              color: cfg.color,
+              margin: 0,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            {cfg.name}
+          </h2>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 400,
+              letterSpacing: '0.16em',
+              color: 'var(--ink-dim)',
+              textTransform: 'uppercase',
+            }}
+          >
+            [ {cfg.role} ]
+          </span>
+        </div>
+        <StatusLine
+          isActive={isActive}
+          isDone={isDone}
+          isWaiting={isWaiting}
+          stageStartedAt={stageStartedAt}
+        />
       </header>
-      <div className="markdown-body">
-        {body.trim() ? (
+
+      <div
+        className="markdown-body"
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '16px 18px',
+          color: 'var(--ink)',
+          fontSize: 12.5,
+          lineHeight: 1.55,
+          minHeight: 0,
+        }}
+      >
+        {hasBody ? (
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {body}
           </ReactMarkdown>
+        ) : isActive ? (
+          <p style={{ color: 'var(--ink-dim)', fontStyle: 'italic' }}>writing...</p>
         ) : (
-          <p style={{ fontSize: 14, color: '#757575', fontStyle: 'italic' }}>
-            (no output)
+          <p style={{ color: 'var(--ink-dimmer)', fontStyle: 'italic' }}>
+            {isWaiting ? 'waiting to start.' : 'no output.'}
           </p>
         )}
       </div>
@@ -233,12 +316,83 @@ function AgentSection({ label, role, body }: { label: string; role: string; body
   );
 }
 
-/**
- * Extracts the latest ### Discussion N block from WarZone.md and splits it
- * into the three agent sections. Returns null if no discussion block exists.
- */
+function StatusLine({
+  isActive,
+  isDone,
+  isWaiting,
+  stageStartedAt,
+}: {
+  isActive: boolean;
+  isDone: boolean;
+  isWaiting: boolean;
+  stageStartedAt: number;
+}) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!isActive) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isActive]);
+
+  if (isActive) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: 'var(--accent)',
+            animation: 'pulse 1.4s ease-in-out infinite',
+            display: 'inline-block',
+          }}
+        />
+        <span
+          style={{
+            fontSize: 10,
+            letterSpacing: '0.15em',
+            color: 'var(--accent)',
+            fontVariantNumeric: 'tabular-nums',
+            textTransform: 'uppercase',
+          }}
+        >
+          running · {formatElapsed(now - stageStartedAt)}
+        </span>
+      </div>
+    );
+  }
+  if (isDone) {
+    return (
+      <span
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.15em',
+          color: 'var(--ink-dim)',
+          textTransform: 'uppercase',
+        }}
+      >
+        ✓ complete
+      </span>
+    );
+  }
+  if (isWaiting) {
+    return (
+      <span
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.15em',
+          color: 'var(--ink-dimmer)',
+          textTransform: 'uppercase',
+        }}
+      >
+        waiting
+      </span>
+    );
+  }
+  return null;
+}
+
 function extractLatestDiscussion(md: string): DiscussionSections | null {
-  // Find all "### Discussion N" headings with their content spans
   const blocks = md.split(/(?=^### Discussion \d+)/m).filter((b) => /^### Discussion \d+/m.test(b));
   if (blocks.length === 0) return null;
   const block = blocks[blocks.length - 1];
@@ -267,7 +421,6 @@ function extractSubsection(block: string, heading: string): string {
 }
 
 function cleanSection(body: string): string {
-  // Strip the status-marker lines — they're for the watcher, not humans.
   const markers = [
     /^\*\*Planner Status:\*\*\s*DONE\s*$/m,
     /^\*\*Builder Status:\*\*\s*DONE\s*$/m,
@@ -275,7 +428,6 @@ function cleanSection(body: string): string {
   ];
   let cleaned = body;
   for (const m of markers) cleaned = cleaned.replace(m, '');
-  // Trim excess blank lines left by removals
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
   return cleaned;
 }

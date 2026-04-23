@@ -35,6 +35,7 @@ hermes/hermes.db-shm
 argus-ui/dist/
 argus-ui/dist-ssr/
 argus-ui/.vite/
+.obsidian/
 
 # ─── Landing site (separate repo) ─────────────────────────────
 # The landing page is pushed to its own repository.

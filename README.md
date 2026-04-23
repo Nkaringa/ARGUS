@@ -113,7 +113,7 @@ All three agents append to `<slug>-WarZone.md` in order — Claude picks the slu
 
 ### Chat
 
-Three tabs: Gemini, Claude, Codex. Each speaks to its own persistent session. No pipeline, no file logging — direct conversation.
+Three tabs: Gemini, Claude, Codex. Each message is a fresh one-shot CLI invocation — no pipeline, no file logging, no session state. The UI keeps the transcript so the conversation still reads as continuous.
 
 ---
 
@@ -147,7 +147,7 @@ The watcher uses globs (`*-Plan.md`, `*-Build-Log.md`, `*-Build-Feedback.md`) at
 
 - **[SETUP.md](SETUP.md)** — install, configure, run, troubleshoot
 - **[workflow.md](workflow.md)** — full end-to-end pipeline walkthrough, state tables, file signal table
-- **[hermes/HERMES.md](hermes/HERMES.md)** — engine reference (folder structure, `.env` fields, `agents.json` config, Codex CLI quirks, session-management matrix)
+- **[hermes/HERMES.md](hermes/HERMES.md)** — engine reference (folder structure, `.env` fields, `agents.json` config, Codex CLI quirks)
 - **[argus-ui/README.md](argus-ui/README.md)** — UI stack, scripts, section map, extension guide
 - **[.claude/CLAUDE.md](.claude/CLAUDE.md)** / **[.gemini/GEMINI.md](.gemini/GEMINI.md)** / **[.codex/CODEX.md](.codex/CODEX.md)** — role specifications each agent is prompted with
 
