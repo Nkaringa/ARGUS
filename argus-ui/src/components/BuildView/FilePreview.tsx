@@ -71,51 +71,75 @@ export function FilePreview({ path, onClose }: FilePreviewProps) {
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 flex items-stretch justify-center z-50"
       style={{
-        background: 'rgba(0,0,0,0.4)',
-        padding: '40px',
+        position: 'fixed',
+        inset: 0,
+        zIndex: 300,
+        background: 'rgba(0, 0, 0, 0.6)',
+        display: 'flex',
+        alignItems: 'stretch',
+        justifyContent: 'center',
+        padding: 40,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex flex-col bg-white"
         style={{
           width: '100%',
           maxWidth: 960,
           maxHeight: '100%',
-          boxShadow: '0 24px 48px rgba(0,0,0,0.24)',
+          background: 'var(--bg-2)',
+          border: '1px solid var(--rule)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
         }}
       >
         {/* Header */}
         <div
-          className="shrink-0 flex items-start justify-between"
-          style={{ padding: '24px 32px', borderBottom: '1px solid #e5e5e5' }}
+          style={{
+            flexShrink: 0,
+            padding: '16px 22px',
+            borderBottom: '1px solid var(--rule)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 18,
+          }}
         >
-          <div className="min-w-0">
+          <div style={{ minWidth: 0, flex: 1 }}>
             {dirPath && (
               <div
-                className="uppercase truncate"
-                style={{ fontSize: 11, letterSpacing: '0.15em', color: '#757575', marginBottom: 4 }}
+                style={{
+                  fontSize: 10,
+                  letterSpacing: '0.16em',
+                  color: 'var(--ink-dimmer)',
+                  textTransform: 'uppercase',
+                  marginBottom: 4,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
                 title={dirPath}
               >
                 {dirPath}
               </div>
             )}
             <div
-              className="truncate"
               style={{
                 fontFamily: 'var(--font-body)',
-                fontSize: 20,
+                fontSize: 16,
                 fontWeight: 700,
-                color: '#262626',
-                lineHeight: 1.2,
+                color: 'var(--ink)',
+                lineHeight: 1.3,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
               }}
               title={filename}
             >
               {filename}
             </div>
-            <div style={{ fontSize: 12, color: '#757575', marginTop: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-dim)', marginTop: 6 }}>
               {data?.size !== undefined && <>{formatSize(data.size)}</>}
               {data?.binary && <> · binary file</>}
             </div>
@@ -123,52 +147,77 @@ export function FilePreview({ path, onClose }: FilePreviewProps) {
           <button
             type="button"
             onClick={onClose}
-            className="uppercase"
             style={{
-              fontSize: 12,
-              letterSpacing: '0.15em',
-              color: '#262626',
-              border: '1px solid #262626',
-              padding: '8px 16px',
+              fontSize: 10,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-dim)',
+              padding: '6px 12px',
               background: 'transparent',
+              border: '1px solid var(--rule)',
               cursor: 'pointer',
               flexShrink: 0,
-              marginLeft: 24,
+              transition: 'color 0.15s, border-color 0.15s',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#262626';
-              e.currentTarget.style.color = '#ffffff';
+              e.currentTarget.style.color = 'var(--accent)';
+              e.currentTarget.style.borderColor = 'var(--accent)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = '#262626';
+              e.currentTarget.style.color = 'var(--ink-dim)';
+              e.currentTarget.style.borderColor = 'var(--rule)';
             }}
           >
-            Close (Esc)
+            close (esc)
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-auto" style={{ padding: 0 }}>
+        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {loading ? (
-            <div style={{ padding: 32, fontSize: 13, color: '#757575' }}>Loading…</div>
+            <div
+              style={{
+                padding: 28,
+                fontSize: 11,
+                letterSpacing: '0.15em',
+                color: 'var(--ink-dim)',
+                textTransform: 'uppercase',
+              }}
+            >
+              loading…
+            </div>
           ) : error ? (
-            <div style={{ padding: 32, fontSize: 13, color: '#a85432', lineHeight: 1.4 }}>
+            <div
+              style={{
+                padding: 28,
+                fontSize: 13,
+                color: 'var(--warn)',
+                lineHeight: 1.5,
+              }}
+            >
               {error}
             </div>
           ) : data?.binary ? (
-            <div style={{ padding: 32, fontSize: 13, color: '#757575', lineHeight: 1.4 }}>
-              Binary file — preview not supported. Open it in your editor from the work directory.
+            <div
+              style={{
+                padding: 28,
+                fontSize: 13,
+                color: 'var(--ink-dim)',
+                lineHeight: 1.5,
+              }}
+            >
+              binary file — preview not supported. open it in your editor from the work
+              directory.
             </div>
           ) : (
             <pre
               style={{
                 margin: 0,
-                padding: '24px 32px',
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: '#262626',
+                padding: '20px 28px',
+                fontFamily: 'var(--font-body)',
+                fontSize: 12.5,
+                lineHeight: 1.55,
+                color: 'var(--ink)',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
               }}

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { clsx } from 'clsx';
 import type { Section, BuildState, WarzoneState } from '../../types';
 import { ResetSessionsModal } from './ResetSessionsModal';
 
@@ -11,219 +10,160 @@ interface SidebarProps {
   onStop: () => void;
 }
 
-function StatusBadge({ state }: { state: BuildState | WarzoneState }) {
-  const busy = state !== 'idle' && state !== 'done';
-  const label = busy ? state.toUpperCase().replace(/_/g, ' ') : 'IDLE';
-  return (
-    <span
-      className={clsx('uppercase', busy ? 'text-[#1c69d4]' : 'text-[#bbbbbb]')}
-      style={{ fontSize: 12, fontWeight: 400, letterSpacing: '0.15em' }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function NavItem({
-  label,
-  section,
-  current,
-  onClick,
-}: {
-  label: string;
-  section: Section;
-  current: Section;
-  onClick: () => void;
-}) {
-  const active = current === section;
-  return (
-    <button
-      onClick={onClick}
-      className={clsx(
-        'block w-full text-left uppercase transition-colors',
-        'text-white hover:text-white'
-      )}
-      style={{
-        fontSize: 18,
-        fontWeight: 900,
-        lineHeight: 1.3,
-        padding: '14px 32px',
-        borderLeft: active ? '2px solid #1c69d4' : '2px solid transparent',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function SubNavItem({
-  label,
-  section,
-  current,
-  onClick,
-}: {
-  label: string;
-  section: Section;
-  current: Section;
-  onClick: () => void;
-}) {
-  const active = current === section;
-  return (
-    <button
-      onClick={onClick}
-      className={clsx(
-        'block w-full text-left transition-colors',
-        active ? 'text-white' : 'text-[#bbbbbb] hover:text-white'
-      )}
-      style={{
-        fontSize: 16,
-        fontWeight: 400,
-        lineHeight: 1.15,
-        padding: '10px 32px 10px 48px',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function GroupLabel({ children }: { children: string }) {
-  return (
-    <p
-      className="uppercase text-[#bbbbbb]"
-      style={{
-        fontSize: 12,
-        fontWeight: 400,
-        letterSpacing: '0.15em',
-        padding: '24px 32px 12px',
-      }}
-    >
-      {children}
-    </p>
-  );
+// Human-readable state label for the sidebar header pill.
+// Examples: 'discussing_gemini' → 'DISCUSSING · GEMINI', 'awaiting_approval' → 'AWAITING · APPROVAL'.
+function formatState(s: BuildState | WarzoneState): string {
+  if (s === 'idle') return 'IDLE';
+  return s.toUpperCase().replace(/_/g, ' · ');
 }
 
 export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop }: SidebarProps) {
   const [resetOpen, setResetOpen] = useState(false);
 
-  const overallBusy =
-    (buildState !== 'idle' && buildState !== 'done') || warzoneState !== 'idle';
-  const activeState = warzoneState !== 'idle' ? warzoneState : buildState;
+  const buildBusy = buildState !== 'idle' && buildState !== 'done';
+  const warzoneBusy = warzoneState !== 'idle';
+  const overallBusy = buildBusy || warzoneBusy;
+  // Warzone state wins the pill when active, otherwise Build state — roughly matches
+  // "what is the user most likely paying attention to right now."
+  const activeState: BuildState | WarzoneState = warzoneBusy ? warzoneState : buildState;
 
   return (
     <>
       <aside
-        style={{ width: 'var(--sidebar-width)', background: '#262626' }}
-        className="flex-shrink-0 flex flex-col h-full"
+        style={{
+          position: 'sticky',
+          top: 'var(--statusbar-height)',
+          height: 'calc(100vh - var(--statusbar-height))',
+          width: 'var(--sidebar-width)',
+          borderRight: '1px solid var(--rule)',
+          background: 'var(--bg)',
+          display: 'flex',
+          flexDirection: 'column',
+          flexShrink: 0,
+        }}
       >
-        {/* Brand */}
-        <div style={{ padding: '40px 32px 32px' }}>
-          <div
-            className="uppercase text-white"
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 32,
-              fontWeight: 300,
-              letterSpacing: '0.1em',
-              lineHeight: 1.3,
-            }}
-          >
-            Argus
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <StatusBadge state={activeState} />
-          </div>
+        {/* Head — state pill only; brand lives in the status bar */}
+        <div
+          style={{
+            padding: '18px 18px 14px',
+            borderBottom: '1px dashed var(--rule)',
+          }}
+        >
+          <StatePill state={activeState} busy={overallBusy} />
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 overflow-y-auto">
-          <div>
-            <GroupLabel>Chat</GroupLabel>
-            <SubNavItem
-              label="Gemini"
-              section="chat-gemini"
-              current={current}
-              onClick={() => onNavigate('chat-gemini')}
-            />
-            <SubNavItem
-              label="Claude"
-              section="chat-claude"
-              current={current}
-              onClick={() => onNavigate('chat-claude')}
-            />
-            <SubNavItem
-              label="Codex"
-              section="chat-codex"
-              current={current}
-              onClick={() => onNavigate('chat-codex')}
-            />
-          </div>
+        {/* Nav — three grouped sections */}
+        <nav style={{ flex: 1, overflowY: 'auto', padding: '12px 0 20px' }}>
+          <GroupLabel>chat</GroupLabel>
+          <SubItem
+            agentClass="claude"
+            label="claude"
+            role="planner"
+            section="chat-claude"
+            current={current}
+            onClick={() => onNavigate('chat-claude')}
+          />
+          <SubItem
+            agentClass="gemini"
+            label="gemini"
+            role="builder"
+            section="chat-gemini"
+            current={current}
+            onClick={() => onNavigate('chat-gemini')}
+          />
+          <SubItem
+            agentClass="codex"
+            label="codex"
+            role="auditor"
+            section="chat-codex"
+            current={current}
+            onClick={() => onNavigate('chat-codex')}
+          />
 
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '16px 0' }} />
+          <GroupLabel>work</GroupLabel>
+          <Item
+            index="01"
+            label="build"
+            section="build"
+            current={current}
+            marker={buildBusy ? '●' : '—'}
+            markerLive={buildBusy}
+            onClick={() => onNavigate('build')}
+          />
+          <Item
+            index="02"
+            label="warzone"
+            section="warzone"
+            current={current}
+            marker={warzoneBusy ? '●' : '—'}
+            markerLive={warzoneBusy}
+            onClick={() => onNavigate('warzone')}
+          />
 
-          <div>
-            <GroupLabel>Work</GroupLabel>
-            <NavItem
-              label="Build"
-              section="build"
-              current={current}
-              onClick={() => onNavigate('build')}
-            />
-            <NavItem
-              label="Warzone"
-              section="warzone"
-              current={current}
-              onClick={() => onNavigate('warzone')}
-            />
-          </div>
-
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '16px 0' }} />
-
-          <div>
-            <GroupLabel>History</GroupLabel>
-            <NavItem
-              label="Logs"
-              section="logs"
-              current={current}
-              onClick={() => onNavigate('logs')}
-            />
-            <NavItem
-              label="Archive"
-              section="archive"
-              current={current}
-              onClick={() => onNavigate('archive')}
-            />
-          </div>
+          <GroupLabel>history</GroupLabel>
+          <Item
+            index="03"
+            label="logs"
+            section="logs"
+            current={current}
+            marker="—"
+            onClick={() => onNavigate('logs')}
+          />
+          <Item
+            index="04"
+            label="archive"
+            section="archive"
+            current={current}
+            marker="—"
+            onClick={() => onNavigate('archive')}
+          />
         </nav>
 
-        {/* Bottom controls */}
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+        {/* Footer — refresh auth, stop pipeline (only when something is running) */}
+        <div style={{ borderTop: '1px solid var(--rule)' }}>
           <button
             onClick={() => setResetOpen(true)}
-            className="block w-full text-left uppercase text-[#bbbbbb] hover:text-white transition-colors"
             style={{
-              fontSize: 14,
-              fontWeight: 400,
-              letterSpacing: '0.15em',
-              padding: '16px 32px',
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              display: 'block',
+              width: '100%',
+              textAlign: 'left',
+              padding: '12px 18px',
+              fontSize: 11,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-dim)',
+              cursor: 'pointer',
+              borderBottom: '1px solid var(--rule)',
+              transition: 'color 0.15s',
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ink)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ink-dim)')}
           >
-            Refresh Agent Auth
+            <span style={{ color: 'var(--ink-dimmer)' }}>↻ </span>
+            refresh agent auth
           </button>
 
           {overallBusy && (
             <button
               onClick={onStop}
-              className="block w-full text-left uppercase text-white transition-colors"
               style={{
-                fontSize: 14,
-                fontWeight: 700,
-                letterSpacing: '0.15em',
-                padding: '16px 32px',
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                padding: '12px 18px',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--accent-ink)',
+                background: 'var(--accent)',
+                cursor: 'pointer',
+                transition: 'background 0.15s',
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#d9ff66')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent)')}
             >
-              Stop →
+              ■ stop pipeline
             </button>
           )}
         </div>
@@ -231,5 +171,230 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
 
       <ResetSessionsModal open={resetOpen} onClose={() => setResetOpen(false)} />
     </>
+  );
+}
+
+function StatePill({ state, busy }: { state: BuildState | WarzoneState; busy: boolean }) {
+  if (!busy) {
+    return (
+      <span
+        style={{
+          marginTop: 10,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 10,
+          letterSpacing: '0.14em',
+          color: 'var(--ink-dimmer)',
+          padding: '4px 8px',
+          border: '1px solid var(--rule-hot)',
+        }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            background: 'var(--ink-dimmer)',
+            borderRadius: '50%',
+          }}
+        />
+        IDLE
+      </span>
+    );
+  }
+  return (
+    <span
+      style={{
+        marginTop: 10,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 10,
+        letterSpacing: '0.14em',
+        color: 'var(--accent)',
+        padding: '4px 8px',
+        border: '1px solid var(--accent)',
+        background: 'rgba(196,255,61,0.08)',
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          background: 'var(--accent)',
+          borderRadius: '50%',
+          animation: 'pulse 1.6s ease-in-out infinite',
+        }}
+      />
+      {formatState(state)}
+    </span>
+  );
+}
+
+function GroupLabel({ children }: { children: string }) {
+  return (
+    <div
+      style={{
+        padding: '14px 18px 6px',
+        fontSize: 10,
+        letterSpacing: '0.16em',
+        color: 'var(--ink-dimmer)',
+        textTransform: 'uppercase',
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 6,
+      }}
+    >
+      <span style={{ color: 'var(--rule-hot)' }}>//</span>
+      {children}
+    </div>
+  );
+}
+
+function Item({
+  index,
+  label,
+  section,
+  current,
+  marker,
+  markerLive,
+  onClick,
+}: {
+  index: string;
+  label: string;
+  section: Section;
+  current: Section;
+  marker: string;
+  markerLive?: boolean;
+  onClick: () => void;
+}) {
+  const active = current === section;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '20px 1fr auto',
+        gap: 10,
+        alignItems: 'center',
+        width: '100%',
+        textAlign: 'left',
+        padding: '8px 18px',
+        fontSize: 13,
+        color: active ? 'var(--ink)' : 'var(--ink-dim)',
+        cursor: 'pointer',
+        borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
+        background: active ? 'var(--bg-2)' : 'transparent',
+        transition: 'color 0.15s, background 0.15s',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          e.currentTarget.style.color = 'var(--ink)';
+          e.currentTarget.style.background = 'var(--bg-2)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.color = 'var(--ink-dim)';
+          e.currentTarget.style.background = 'transparent';
+        }
+      }}
+    >
+      <span style={{ color: active ? 'var(--accent)' : 'var(--ink-dimmer)', fontSize: 10 }}>
+        {index}
+      </span>
+      <span>{label}</span>
+      <span
+        style={{
+          color: markerLive ? 'var(--accent)' : active ? 'var(--accent)' : 'var(--ink-dimmer)',
+          fontSize: 10,
+        }}
+      >
+        {marker}
+      </span>
+    </button>
+  );
+}
+
+function SubItem({
+  agentClass,
+  label,
+  role,
+  section,
+  current,
+  onClick,
+}: {
+  agentClass: 'claude' | 'gemini' | 'codex';
+  label: string;
+  role: string;
+  section: Section;
+  current: Section;
+  onClick: () => void;
+}) {
+  const active = current === section;
+  const dotColor =
+    agentClass === 'claude'
+      ? 'var(--claude)'
+      : agentClass === 'gemini'
+        ? 'var(--gemini)'
+        : 'var(--codex)';
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '20px 1fr auto',
+        gap: 10,
+        alignItems: 'center',
+        width: '100%',
+        textAlign: 'left',
+        padding: '8px 18px 8px 34px',
+        fontSize: 13,
+        color: active ? 'var(--ink)' : 'var(--ink-dim)',
+        cursor: 'pointer',
+        borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
+        background: active ? 'var(--bg-2)' : 'transparent',
+        transition: 'color 0.15s, background 0.15s',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          e.currentTarget.style.color = 'var(--ink)';
+          e.currentTarget.style.background = 'var(--bg-2)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.color = 'var(--ink-dim)';
+          e.currentTarget.style.background = 'transparent';
+        }
+      }}
+    >
+      <span
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: '50%',
+          background: dotColor,
+          boxShadow: active ? `0 0 8px ${dotColor}` : 'none',
+          display: 'inline-block',
+          justifySelf: 'center',
+        }}
+      />
+      <span>
+        {label}{' '}
+        <span
+          style={{
+            fontSize: 10,
+            color: active ? 'var(--accent)' : 'var(--ink-dimmer)',
+            letterSpacing: '0.08em',
+          }}
+        >
+          {role}
+        </span>
+      </span>
+      <span style={{ color: active ? 'var(--accent)' : 'var(--ink-dimmer)', fontSize: 10 }}>
+        {active ? '●' : 'idle'}
+      </span>
+    </button>
   );
 }

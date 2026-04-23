@@ -16,7 +16,7 @@ The React control-panel for Argus. Talks to Hermes (the backend engine) over Web
 
 ## Getting Started
 
-`argus-ui` is a workspace of the root `argus` package. For first-time setup (prerequisites, project folder, session seeding, etc.) see [../SETUP.md](../SETUP.md). Quick commands once you're set up — **install from the repo root, not here**:
+`argus-ui` is a workspace of the root `argus` package. For first-time setup (prerequisites, project folder, CLI auth, etc.) see [../SETUP.md](../SETUP.md). Quick commands once you're set up — **install from the repo root, not here**:
 
 ```bash
 # From the repo root (one-time)
@@ -57,28 +57,34 @@ argus-ui/
 │   ├── App.tsx                      top-level section router
 │   ├── main.tsx                     entry point
 │   ├── config.ts                    server URLs + auth helpers
-│   ├── index.css                    BMW @theme tokens, base reset, scrollbar
+│   ├── index.css                    terminal palette tokens (`:root` CSS vars), base reset, scrollbar, shared keyframes
 │   │
 │   ├── types/index.ts               AgentKey, Section, BuildState, WarzoneState, OutputLine, …
 │   │
 │   ├── hooks/
-│   │   ├── useBuildSocket.ts        build pipeline WS + action endpoints + projects list
+│   │   ├── useBuildSocket.ts        build pipeline WS + action endpoints + projects list + stageStartedAt
 │   │   ├── useWarzoneSocket.ts      warzone WS + action endpoints + newDiscussion
 │   │   ├── useChatSocket.ts         chat WS + sendMessage (three agents)
 │   │   └── useHistory.ts            archive list/read fetchers (no WS)
 │   │
 │   └── components/
 │       ├── Layout/
-│       │   ├── Sidebar.tsx          left nav — BMW dark strip
+│       │   ├── StatusBar.tsx        fixed top bar — brand + scrolling ticker + quick nav + live pill
+│       │   ├── Sidebar.tsx          left nav — state pill + `// chat / work / history` groups + agent-colored dots
 │       │   └── ResetSessionsModal.tsx  "Refresh Agent Auth" — documentation-only (CLI re-auth steps)
 │       ├── shared/
-│       │   └── markdownComponents.tsx  shared react-markdown styling (BMW aesthetic)
-│       ├── ChatView/                per-agent chat (rendered 3×, one per agent)
-│       ├── BuildView/               build pipeline UI — 5-step progress, approval, grade hero, project selector
+│       │   ├── Panel.tsx            shared Panel + ActionButton (supports `fill` for flex-column layouts)
+│       │   └── markdownComponents.tsx  shared react-markdown styling (dark terminal aesthetic)
+│       ├── ChatView/                per-agent chat (rendered 3×, one per agent); agent messages render via markdownComponents
+│       ├── BuildView/
+│       │   ├── index.tsx            cockpit — HeroCard + PipelineStrip + AgentMonitor + ActiveStage + OutputStream + TaskInput + LastAudit + TaskMeta; `[▸ pipeline | ◧ workspace]` toggle
+│       │   ├── FileBrowser.tsx      WORK_DIR tree (polls `GET /files`); supports controlled-mode via `onFileSelect` + `externalSelectedFile`
+│       │   ├── FilePreview.tsx      modal file-content viewer (used in pipeline mode via FileBrowser's uncontrolled path)
+│       │   └── InlinePreview.tsx    non-modal file-content pane used in workspace mode
 │       ├── WarzoneView/
-│       │   ├── index.tsx            3-phase progress, raw log panel while busy, New Discussion button
-│       │   └── DiscussionReview.tsx pretty-printed markdown review once complete
-│       ├── LogsView/                task history from SQLite (DB-driven)
+│       │   ├── index.tsx            3-column discussion cockpit (Claude | Gemini | Codex), hero with New Discussion
+│       │   └── DiscussionReview.tsx per-agent column border in agent color, capped at 65vh with internal scroll
+│       ├── LogsView/                task history from SQLite — dense CSS-grid terminal table (id · when · task · iter · state · grade)
 │       └── HistoryView/             read-only archive viewer (Build-History + WarZone-History)
 │
 ├── public/
@@ -115,8 +121,11 @@ Plan → Build → Audit → Review → Done
 - `planning` → PLAN segment active
 - `building` → BUILD segment active
 - `auditing` → AUDIT segment active
-- `awaiting_approval` → REVIEW segment active, approval panel shown with grade letter rendered as a 60px hero
+- `awaiting_approval` → REVIEW segment active, approval panel shown with grade letter rendered as an 84px hero
+- `paused` → after an agent fails twice; BUILD segment kept active, retry / abort controls shown
 - `done` → all segments filled
+
+The Build view has two display modes toggled by `[▸ pipeline | ◧ workspace]` in the breadcrumbs: **pipeline** is the full cockpit (default); **workspace** replaces the body with a 320px file tree + inline preview split pane so the user can watch files land as they're written.
 
 ## Build Project Selector
 
@@ -134,7 +143,7 @@ The list refreshes on tab focus and after every transition to `idle`/`done`.
 Claude → Gemini → Codex → Review
 ```
 
-During the three busy phases (`discussing_claude` / `discussing_gemini` / `discussing_codex`), raw agent stdout streams in a dark log panel for live progress. On transition to `awaiting_discuss_approval`, the panel is **replaced** with `DiscussionReview` — which fetches `GET /warzone.md` and renders each agent's contribution as pretty-printed markdown (weight 900 uppercase labels, BMW Blue role tags, hairline-separated sections). The status markers (`**Planner Status:** DONE`, etc.) are stripped from the human view — they're for the watcher only.
+During the three busy phases (`discussing_claude` / `discussing_gemini` / `discussing_codex`), raw agent stdout streams in a live log panel for progress. On transition to `awaiting_discuss_approval`, the panel is **replaced** with `DiscussionReview` — three side-by-side columns (Claude | Gemini | Codex), each bordered in its agent color when active, rendering that agent's contribution as pretty-printed markdown. Columns are capped at `65vh` with internal scroll so the page itself doesn't grow. The status markers (`**Planner Status:** DONE`, etc.) are stripped from the human view — they're for the watcher only.
 
 ---
 
@@ -164,9 +173,17 @@ Set these in `argus-ui/.env.local` to override. Protocol (`http` / `https` / `ws
 
 ## Design System
 
-The dashboard uses a BMW-literal design language (white canvas, BMW Blue `#1c69d4` accent, Helvetica stack, zero border-radius, weight extremes 300/400/700/900). Dark strips (`#262626`) survive only in the sidebar, the log output panel, and the Warzone discussion panel during busy phases.
+The dashboard uses a dark terminal aesthetic — near-black canvas (`--bg #0c0c0d`), acid-lime accent (`--accent #c4ff3d`), JetBrains Mono for body / labels / logs, Space Grotesk for display headings, zero border-radius, 1px rules throughout. Drove by the HTML mockup at `landing/Mockup/argus-ui.html`.
 
-This is intentionally **different** from the landing site (which lives in its own repository and uses a terminal-native dark + lime palette). The dashboard is the tool; the landing is the marketing voice.
+Per-agent color coding for at-a-glance scanning:
+
+| Agent | Color | Var |
+|---|---|---|
+| Claude | orange `#d97757` | `--claude` |
+| Gemini | blue `#5b9cff` | `--gemini` |
+| Codex | purple `#b084ff` | `--codex` |
+
+All tokens live in `src/index.css` under `:root` — layout vars (`--sidebar-width`, `--statusbar-height`), palette, per-agent colors, fonts, and shared keyframes (`blink`, `pulse`, `ticker`, `caret`). The dashboard and the landing site now share the same terminal-native visual vocabulary.
 
 ---
 

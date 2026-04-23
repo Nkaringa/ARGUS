@@ -15,19 +15,34 @@ interface DiscussionSections {
 }
 
 interface DiscussionReviewProps {
-  /** Current warzone state so we can mark the active column + drive polling cadence. */
+  /** Current warzone state — drives per-column status (running / done / waiting). */
   state: WarzoneState;
 }
 
 type AgentKey = 'claude' | 'gemini' | 'codex';
 
-const AGENT_LABELS: Record<AgentKey, { name: string; role: string; activeState: WarzoneState }> = {
-  claude: { name: 'Claude', role: 'Planner', activeState: 'discussing_claude' },
-  gemini: { name: 'Gemini', role: 'Builder', activeState: 'discussing_gemini' },
-  codex: { name: 'Codex', role: 'Auditor', activeState: 'discussing_codex' },
+const AGENT_CONFIG: Record<
+  AgentKey,
+  { name: string; role: string; activeState: WarzoneState; color: string }
+> = {
+  claude: { name: 'claude', role: 'planner', activeState: 'discussing_claude', color: 'var(--claude)' },
+  gemini: { name: 'gemini', role: 'builder', activeState: 'discussing_gemini', color: 'var(--gemini)' },
+  codex:  { name: 'codex',  role: 'auditor', activeState: 'discussing_codex',  color: 'var(--codex)'  },
 };
 
-const BUSY_STATES: WarzoneState[] = ['discussing_claude', 'discussing_gemini', 'discussing_codex'];
+const BUSY_STATES: WarzoneState[] = [
+  'discussing_claude',
+  'discussing_gemini',
+  'discussing_codex',
+];
+
+const STATE_ORDER: WarzoneState[] = [
+  'idle',
+  'discussing_claude',
+  'discussing_gemini',
+  'discussing_codex',
+  'awaiting_discuss_approval',
+];
 
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -69,8 +84,6 @@ export function DiscussionReview({ state }: DiscussionReviewProps) {
     }
   }, []);
 
-  // Fetch on mount + whenever state changes. Poll during busy states so Claude's
-  // column fills in mid-turn rather than only showing after all three are done.
   useEffect(() => {
     fetchDiscussion();
     if (!BUSY_STATES.includes(state)) return;
@@ -78,8 +91,6 @@ export function DiscussionReview({ state }: DiscussionReviewProps) {
     return () => clearInterval(id);
   }, [fetchDiscussion, state]);
 
-  // Stamp the start time for the current active agent so its column can show elapsed.
-  // Resetting on state change gives each agent its own counter.
   const [stageStartedAt, setStageStartedAt] = useState<number>(() => Date.now());
   useEffect(() => {
     setStageStartedAt(Date.now());
@@ -87,7 +98,15 @@ export function DiscussionReview({ state }: DiscussionReviewProps) {
 
   if (status === 'loading' && !sections) {
     return (
-      <div style={{ padding: '24px 0', fontSize: 12, color: '#757575', textTransform: 'uppercase', letterSpacing: '0.15em' }}>
+      <div
+        style={{
+          padding: '16px 20px',
+          fontSize: 10,
+          letterSpacing: '0.15em',
+          color: 'var(--ink-dim)',
+          textTransform: 'uppercase',
+        }}
+      >
         Loading discussion...
       </div>
     );
@@ -95,61 +114,68 @@ export function DiscussionReview({ state }: DiscussionReviewProps) {
 
   if (status === 'error') {
     return (
-      <div style={{ padding: '24px 0' }}>
-        <p className="uppercase" style={{ fontSize: 12, fontWeight: 900, letterSpacing: '0.15em', color: '#262626', marginBottom: 8 }}>
+      <div style={{ padding: '16px 20px' }}>
+        <p
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.15em',
+            color: 'var(--warn)',
+            textTransform: 'uppercase',
+            marginBottom: 6,
+          }}
+        >
           Failed to load WarZone.md
         </p>
-        <p style={{ fontSize: 14, color: '#757575' }}>{error}</p>
+        <p style={{ fontSize: 12, color: 'var(--ink-dim)' }}>{error}</p>
       </div>
     );
   }
 
-  const hasAnyContent = !!sections && (sections.claudePlan || sections.geminiBuild || sections.codexAudit);
-  const meta = sections;
-
   return (
-    <div className="flex-1 flex flex-col min-h-0" style={{ background: '#ffffff' }}>
-      {/* Meta header — discussion number, date, idea */}
-      {meta && (meta.discussionNumber || meta.date || meta.idea) && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minHeight: 0 }}>
+      {sections && (sections.discussionNumber || sections.date || sections.idea) && (
         <div
-          className="shrink-0"
           style={{
             display: 'flex',
-            gap: 32,
-            padding: '8px 0 24px',
-            borderBottom: '1px solid #bbbbbb',
+            gap: 28,
             flexWrap: 'wrap',
+            padding: '12px 18px',
+            border: '1px solid var(--rule)',
+            background: 'var(--bg-2)',
           }}
         >
-          {meta.discussionNumber && <Meta label="Discussion" value={`#${meta.discussionNumber}`} />}
-          {meta.date && <Meta label="Date" value={meta.date} />}
-          {meta.idea && <Meta label="Idea" value={meta.idea} wide />}
+          {sections.discussionNumber && (
+            <Meta label="discussion" value={`#${sections.discussionNumber}`} />
+          )}
+          {sections.date && <Meta label="date" value={sections.date} />}
+          {sections.idea && <Meta label="idea" value={sections.idea} wide />}
         </div>
       )}
 
-      {/* Three-column layout */}
-      <div className="flex-1 flex min-h-0" style={{ gap: 24, paddingTop: 24 }}>
-        <AgentColumn
-          agent="claude"
-          body={sections?.claudePlan ?? ''}
-          state={state}
-          stageStartedAt={stageStartedAt}
-          hasAnyContent={hasAnyContent}
-        />
-        <AgentColumn
-          agent="gemini"
-          body={sections?.geminiBuild ?? ''}
-          state={state}
-          stageStartedAt={stageStartedAt}
-          hasAnyContent={hasAnyContent}
-        />
-        <AgentColumn
-          agent="codex"
-          body={sections?.codexAudit ?? ''}
-          state={state}
-          stageStartedAt={stageStartedAt}
-          hasAnyContent={hasAnyContent}
-        />
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 18,
+          minHeight: 320,
+        }}
+      >
+        {(['claude', 'gemini', 'codex'] as AgentKey[]).map((key) => (
+          <AgentColumn
+            key={key}
+            agent={key}
+            body={
+              key === 'claude'
+                ? (sections?.claudePlan ?? '')
+                : key === 'gemini'
+                  ? (sections?.geminiBuild ?? '')
+                  : (sections?.codexAudit ?? '')
+            }
+            state={state}
+            stageStartedAt={stageStartedAt}
+          />
+        ))}
       </div>
     </div>
   );
@@ -158,17 +184,25 @@ export function DiscussionReview({ state }: DiscussionReviewProps) {
 function Meta({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
   return (
     <div style={{ flex: wide ? 1 : undefined, minWidth: 0 }}>
-      <div className="uppercase" style={{ fontSize: 12, fontWeight: 400, letterSpacing: '0.15em', color: '#757575', marginBottom: 4 }}>
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.16em',
+          color: 'var(--ink-dimmer)',
+          textTransform: 'uppercase',
+          marginBottom: 4,
+        }}
+      >
         {label}
       </div>
       <div
         style={{
-          fontSize: 14,
-          fontWeight: 400,
-          color: '#262626',
-          lineHeight: 1.3,
+          fontSize: 13,
+          color: 'var(--ink)',
+          lineHeight: 1.4,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
+          whiteSpace: wide ? 'normal' : 'nowrap',
         }}
       >
         {value}
@@ -182,58 +216,68 @@ function AgentColumn({
   body,
   state,
   stageStartedAt,
-  hasAnyContent,
 }: {
   agent: AgentKey;
   body: string;
   state: WarzoneState;
   stageStartedAt: number;
-  hasAnyContent: boolean;
 }) {
-  const cfg = AGENT_LABELS[agent];
+  const cfg = AGENT_CONFIG[agent];
   const isActive = state === cfg.activeState;
   const hasBody = body.trim().length > 0;
-  // An agent is "done" if its section exists in the file AND we're not sitting on
-  // that agent's active state. Handles the brief gap between file-append and state
-  // transition on the next agent.
   const isDone = hasBody && !isActive;
-  // "Waiting" = the pipeline hasn't reached this agent yet. State order is
-  // idle(0) → claude(1) → gemini(2) → codex(3) → approval(4).
-  const stateIndex = ['idle', 'discussing_claude', 'discussing_gemini', 'discussing_codex', 'awaiting_discuss_approval'].indexOf(state);
-  const agentIndex = ['claude', 'gemini', 'codex'].indexOf(agent) + 1;
-  const isWaiting = !hasBody && !isActive && stateIndex < agentIndex;
-  void hasAnyContent; // reserved for future use (e.g. render nothing before first run)
+  const thisIdx = STATE_ORDER.indexOf(cfg.activeState);
+  const curIdx = STATE_ORDER.indexOf(state);
+  const isWaiting = !hasBody && !isActive && curIdx < thisIdx;
 
   return (
     <section
-      className="flex-1 flex flex-col min-h-0 min-w-0"
       style={{
-        border: isActive ? '1px solid #1c69d4' : '1px solid #e5e5e5',
-        background: isActive ? '#f7f9fd' : '#ffffff',
-        padding: '20px 24px',
+        border: `1px solid ${isActive ? cfg.color : 'var(--rule)'}`,
+        background: 'var(--bg-2)',
+        display: 'flex',
+        flexDirection: 'column',
+        minWidth: 0,
+        // Cap column height so long agent output scrolls WITHIN the column instead
+        // of stretching the page vertically. 65vh leaves breadcrumbs + hero + pipeline
+        // visible above and idea input visible below on typical screens.
+        height: '65vh',
+        maxHeight: '65vh',
       }}
     >
-      {/* Header */}
-      <header className="shrink-0" style={{ marginBottom: 16 }}>
-        <div className="flex items-baseline" style={{ gap: 12, marginBottom: 6 }}>
+      <header
+        style={{
+          padding: '14px 18px',
+          borderBottom: '1px solid var(--rule)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
           <h2
-            className="uppercase"
             style={{
-              fontFamily: 'var(--font-body)',
-              fontSize: 18,
-              fontWeight: 900,
-              letterSpacing: '0.15em',
-              color: '#262626',
+              fontFamily: 'var(--font-display)',
+              fontSize: 22,
+              fontWeight: 500,
+              color: cfg.color,
               margin: 0,
+              letterSpacing: '-0.02em',
             }}
           >
             {cfg.name}
           </h2>
           <span
-            className="uppercase"
-            style={{ fontSize: 11, fontWeight: 400, letterSpacing: '0.15em', color: '#1c69d4' }}
+            style={{
+              fontSize: 10,
+              fontWeight: 400,
+              letterSpacing: '0.16em',
+              color: 'var(--ink-dim)',
+              textTransform: 'uppercase',
+            }}
           >
-            {cfg.role}
+            [ {cfg.role} ]
           </span>
         </div>
         <StatusLine
@@ -244,19 +288,27 @@ function AgentColumn({
         />
       </header>
 
-      {/* Body — scrollable markdown */}
-      <div className="flex-1 overflow-y-auto min-h-0 markdown-body" style={{ paddingRight: 4 }}>
+      <div
+        className="markdown-body"
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '16px 18px',
+          color: 'var(--ink)',
+          fontSize: 12.5,
+          lineHeight: 1.55,
+          minHeight: 0,
+        }}
+      >
         {hasBody ? (
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {body}
           </ReactMarkdown>
         ) : isActive ? (
-          <p style={{ fontSize: 13, color: '#757575', fontStyle: 'italic' }}>
-            Writing...
-          </p>
+          <p style={{ color: 'var(--ink-dim)', fontStyle: 'italic' }}>writing...</p>
         ) : (
-          <p style={{ fontSize: 13, color: '#bbbbbb', fontStyle: 'italic' }}>
-            {isWaiting ? 'Waiting to start.' : 'No output.'}
+          <p style={{ color: 'var(--ink-dimmer)', fontStyle: 'italic' }}>
+            {isWaiting ? 'waiting to start.' : 'no output.'}
           </p>
         )}
       </div>
@@ -284,46 +336,62 @@ function StatusLine({
 
   if (isActive) {
     return (
-      <div className="flex items-center" style={{ gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span
-          className="animate-pulse"
-          style={{ width: 7, height: 7, borderRadius: '50%', background: '#1c69d4', display: 'inline-block' }}
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: 'var(--accent)',
+            animation: 'pulse 1.4s ease-in-out infinite',
+            display: 'inline-block',
+          }}
         />
         <span
-          className="uppercase"
           style={{
-            fontSize: 11,
+            fontSize: 10,
             letterSpacing: '0.15em',
-            color: '#1c69d4',
+            color: 'var(--accent)',
             fontVariantNumeric: 'tabular-nums',
+            textTransform: 'uppercase',
           }}
         >
-          Running · {formatElapsed(now - stageStartedAt)}
+          running · {formatElapsed(now - stageStartedAt)}
         </span>
       </div>
     );
   }
   if (isDone) {
     return (
-      <span className="uppercase" style={{ fontSize: 11, letterSpacing: '0.15em', color: '#757575' }}>
-        Complete
+      <span
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.15em',
+          color: 'var(--ink-dim)',
+          textTransform: 'uppercase',
+        }}
+      >
+        ✓ complete
       </span>
     );
   }
   if (isWaiting) {
     return (
-      <span className="uppercase" style={{ fontSize: 11, letterSpacing: '0.15em', color: '#bbbbbb' }}>
-        Waiting
+      <span
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.15em',
+          color: 'var(--ink-dimmer)',
+          textTransform: 'uppercase',
+        }}
+      >
+        waiting
       </span>
     );
   }
   return null;
 }
 
-/**
- * Extracts the latest ### Discussion N block from WarZone.md and splits it
- * into the three agent sections. Returns null if no discussion block exists.
- */
 function extractLatestDiscussion(md: string): DiscussionSections | null {
   const blocks = md.split(/(?=^### Discussion \d+)/m).filter((b) => /^### Discussion \d+/m.test(b));
   if (blocks.length === 0) return null;

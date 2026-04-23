@@ -24,7 +24,7 @@ See [workflow.md](../workflow.md) for the end-to-end pipeline walkthrough.
 
 ## How to Start
 
-For full first-time setup (prerequisites, project folder, session seeding, etc.) see **[SETUP.md](../SETUP.md)** at the repo root. Quick commands once you're already set up:
+For full first-time setup (prerequisites, project folder, CLI auth, etc.) see **[SETUP.md](../SETUP.md)** at the repo root. Quick commands once you're already set up:
 
 ```bash
 # From the repo root (one-time install covers hermes + argus-ui as workspaces)
@@ -67,7 +67,7 @@ hermes/
 │   └── warzone.js          POST /discuss, /discuss/approval, /stop   GET /state, /warzone.md
 │
 ├── hermes.db               SQLite database (events + tasks tables) — git-ignored
-├── .env                    WORK_DIR, session IDs, ports, CHAT_DIR — git-ignored
+├── .env                    WORK_DIR, ports, CHAT_DIR — git-ignored
 ├── .env.example            Template — copy to .env and set WORK_DIR
 ├── .gitignore              Ignores .env, hermes.db, runtime artifacts
 ├── HERMES.md               This file

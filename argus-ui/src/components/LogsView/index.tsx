@@ -1,122 +1,346 @@
 import type { HistoryItem } from '../../types';
+import { Panel } from '../shared/Panel';
 
 interface LogsViewProps {
   history: HistoryItem[];
 }
 
-function HistoryRow({ item }: { item: HistoryItem }) {
-  const date = new Date(item.created_at).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+// Format timestamp as "Apr 23 · 14:22" so the table stays compact while still
+// carrying enough context to orient a task against memory.
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${date} · ${time}`;
+}
 
+// Status values come from hermes.db tasks.status (RUNNING / DONE / STALE / ABORTED).
+// Color-code so a user can spot trouble rows (stale, aborted) without reading.
+function statusStyle(status: string): { color: string; label: string } {
+  const s = status.toUpperCase();
+  if (s === 'DONE')    return { color: 'var(--accent)',  label: 'done' };
+  if (s === 'RUNNING') return { color: 'var(--gemini)',  label: 'running' };
+  if (s === 'STALE')   return { color: 'var(--warn)',    label: 'stale' };
+  if (s === 'ABORTED') return { color: 'var(--warn)',    label: 'aborted' };
+  return { color: 'var(--ink-dim)', label: s.toLowerCase() };
+}
+
+function gradeStyle(grade: string | null): { color: string; text: string } {
+  if (!grade) return { color: 'var(--ink-dimmer)', text: '—' };
+  const g = grade.toUpperCase();
+  if (g === 'A') return { color: 'var(--accent)', text: 'A' };
+  if (g === 'B') return { color: 'var(--ink)',    text: 'B' };
+  if (g === 'C') return { color: 'var(--warn)',   text: 'C' };
+  if (g === 'F') return { color: 'var(--warn)',   text: 'F' };
+  return { color: 'var(--ink-dimmer)', text: g };
+}
+
+/* ────────────────────────────── breadcrumbs ────────────────────────────── */
+
+function Breadcrumbs({ count }: { count: number }) {
   return (
     <div
-      className="flex items-start justify-between"
-      style={{ padding: '24px 0', borderBottom: '1px solid #bbbbbb', gap: 32 }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        paddingBottom: 14,
+        borderBottom: '1px dashed var(--rule)',
+        fontSize: 11,
+        color: 'var(--ink-dimmer)',
+        letterSpacing: '0.06em',
+        flexWrap: 'wrap',
+      }}
     >
-      <div style={{ flex: 1 }}>
-        <p
-          style={{
-            fontSize: 16,
-            fontWeight: 400,
-            lineHeight: 1.3,
-            color: '#262626',
-          }}
-        >
-          {item.description}
-        </p>
-        <div className="flex items-center" style={{ gap: 24, marginTop: 12 }}>
-          <span
-            className="uppercase"
-            style={{ fontSize: 12, fontWeight: 400, letterSpacing: '0.15em', color: '#757575' }}
-          >
-            {item.status}
-          </span>
-          {item.iterations > 0 && (
-            <span
-              className="uppercase"
-              style={{ fontSize: 12, fontWeight: 400, letterSpacing: '0.15em', color: '#757575' }}
-            >
-              {item.iterations} Iteration{item.iterations !== 1 ? 's' : ''}
-            </span>
-          )}
-          <span
-            style={{ fontSize: 14, fontWeight: 400, color: '#757575' }}
-          >
-            {date}
-          </span>
-        </div>
-      </div>
-      {item.grade && (
-        <span
-          className="uppercase"
-          style={{
-            fontSize: 16,
-            fontWeight: 700,
-            letterSpacing: '0.05em',
-            color: item.grade === 'A' ? '#1c69d4' : '#262626',
-            minWidth: 32,
-            textAlign: 'right',
-          }}
-        >
-          {item.grade}
-        </span>
-      )}
+      <span style={{ color: 'var(--ink)' }}>history</span>
+      <span style={{ color: 'var(--rule-hot)' }}>/</span>
+      <span style={{ color: 'var(--accent)' }}>logs</span>
+      <span style={{ color: 'var(--ink-dim)', fontSize: 10, marginLeft: 'auto' }}>
+        {count} task{count === 1 ? '' : 's'} · source <b style={{ color: 'var(--accent)', fontWeight: 500 }}>sqlite WAL</b>
+      </span>
     </div>
   );
 }
 
-export function LogsView({ history }: LogsViewProps) {
+/* ────────────────────────────── hero ────────────────────────────── */
+
+function HeroCard({ count }: { count: number }) {
   return (
-    <div className="flex flex-col h-full bg-white text-[#262626]">
-      {/* Header */}
-      <div className="shrink-0" style={{ padding: '48px 60px 32px', borderBottom: '1px solid #bbbbbb' }}>
-        <h1
-          className="uppercase"
+    <section
+      style={{
+        marginTop: 20,
+        border: '1px solid var(--rule)',
+        background: 'var(--bg-2)',
+        padding: '22px 26px',
+        display: 'flex',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+        gap: 24,
+        flexWrap: 'wrap',
+      }}
+    >
+      <div>
+        <div
           style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 60,
-            fontWeight: 300,
-            lineHeight: 1.3,
-            letterSpacing: '0.02em',
+            fontSize: 10,
+            letterSpacing: '0.18em',
+            color: 'var(--ink-dimmer)',
+            textTransform: 'uppercase',
           }}
         >
-          Logs
+          // build pipeline history · live from hermes.db
+        </div>
+        <h1
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'clamp(32px, 4.8vw, 56px)',
+            fontWeight: 500,
+            lineHeight: 1,
+            letterSpacing: '-0.03em',
+            marginTop: 10,
+            color: 'var(--ink)',
+          }}
+        >
+          logs
         </h1>
-        <p style={{ fontSize: 14, fontWeight: 400, color: '#757575', marginTop: 8 }}>
-          {history.length} task{history.length !== 1 ? 's' : ''} completed
-        </p>
       </div>
+      <div style={{ display: 'flex', gap: 32, alignItems: 'baseline' }}>
+        <Stat label="tasks" value={String(count)} />
+        <Stat label="source" value="tasks table" mono />
+      </div>
+    </section>
+  );
+}
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: '0 60px' }}>
-        {history.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center" style={{ gap: 16 }}>
-            <p
-              className="uppercase"
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 32,
-                fontWeight: 300,
-                letterSpacing: '0.02em',
-                color: '#262626',
-              }}
-            >
-              No Completed Tasks Yet
-            </p>
-            <p
-              className="uppercase"
-              style={{ fontSize: 12, color: '#757575', letterSpacing: '0.15em' }}
-            >
-              Finished builds will appear here
-            </p>
+function Stat({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.14em',
+          color: 'var(--ink-dimmer)',
+          textTransform: 'uppercase',
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontFamily: mono ? 'var(--font-body)' : 'var(--font-display)',
+          fontSize: mono ? 14 : 20,
+          fontWeight: 500,
+          color: 'var(--ink)',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────── log table ────────────────────────────── */
+
+function LogTable({ history }: { history: HistoryItem[] }) {
+  if (history.length === 0) {
+    return (
+      <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 22,
+            fontWeight: 500,
+            color: 'var(--ink)',
+            letterSpacing: '-0.02em',
+            marginBottom: 8,
+          }}
+        >
+          no tasks yet
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            letterSpacing: '0.12em',
+            color: 'var(--ink-dimmer)',
+            textTransform: 'uppercase',
+          }}
+        >
+          finished builds appear here
+        </div>
+      </div>
+    );
+  }
+
+  // Newest first — hermes returns oldest→newest; reverse once here so the caller doesn't.
+  const rows = [...history].reverse();
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '60px 140px 1fr 80px 120px 60px',
+      }}
+    >
+      <HeaderCell>id</HeaderCell>
+      <HeaderCell>when</HeaderCell>
+      <HeaderCell>task</HeaderCell>
+      <HeaderCell style={{ justifyContent: 'flex-end' }}>iter</HeaderCell>
+      <HeaderCell>state</HeaderCell>
+      <HeaderCell style={{ justifyContent: 'center' }}>grade</HeaderCell>
+
+      {rows.map((item) => {
+        const state = statusStyle(item.status);
+        const grade = gradeStyle(item.grade);
+        return (
+          <Row key={item.id}>
+            <Cell muted tabular>
+              #{item.id}
+            </Cell>
+            <Cell muted tabular>
+              {formatWhen(item.created_at)}
+            </Cell>
+            <Cell>
+              <span
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  color: 'var(--ink)',
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                }}
+                title={item.description}
+              >
+                {item.description}
+              </span>
+            </Cell>
+            <Cell muted tabular style={{ justifyContent: 'flex-end' }}>
+              {item.iterations > 0 ? item.iterations : '—'}
+            </Cell>
+            <Cell>
+              <span
+                style={{
+                  fontSize: 10,
+                  letterSpacing: '0.16em',
+                  textTransform: 'uppercase',
+                  color: state.color,
+                }}
+              >
+                {state.label}
+              </span>
+            </Cell>
+            <Cell style={{ justifyContent: 'center' }}>
+              <span
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 22,
+                  fontWeight: 500,
+                  color: grade.color,
+                  lineHeight: 1,
+                }}
+              >
+                {grade.text}
+              </span>
+            </Cell>
+          </Row>
+        );
+      })}
+    </div>
+  );
+}
+
+function HeaderCell({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div
+      style={{
+        padding: '12px 18px',
+        borderBottom: '1px solid var(--rule)',
+        fontSize: 10,
+        letterSpacing: '0.14em',
+        color: 'var(--ink-dimmer)',
+        textTransform: 'uppercase',
+        background: 'var(--bg)',
+        display: 'flex',
+        alignItems: 'center',
+        position: 'sticky',
+        top: 0,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Row({ children }: { children: React.ReactNode }) {
+  // `display: contents` lets each row's children participate in the parent grid
+  // while still grouping semantically. Hover highlight is handled below because
+  // `display: contents` can't carry a :hover — so each cell handles its own.
+  return <div style={{ display: 'contents' }}>{children}</div>;
+}
+
+function Cell({
+  children,
+  muted,
+  tabular,
+  style,
+}: {
+  children: React.ReactNode;
+  muted?: boolean;
+  tabular?: boolean;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div
+      style={{
+        padding: '12px 18px',
+        borderBottom: '1px dashed var(--rule)',
+        fontSize: 12,
+        color: muted ? 'var(--ink-dim)' : 'var(--ink)',
+        fontVariantNumeric: tabular ? 'tabular-nums' : 'normal',
+        display: 'flex',
+        alignItems: 'center',
+        minWidth: 0,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ────────────────────────────── main view ────────────────────────────── */
+
+export function LogsView({ history }: LogsViewProps) {
+  return (
+    <div
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '18px 24px 24px',
+        background: 'var(--bg)',
+        color: 'var(--ink)',
+        minHeight: 0,
+      }}
+    >
+      <Breadcrumbs count={history.length} />
+      <HeroCard count={history.length} />
+
+      <div style={{ marginTop: 18, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <Panel fill headLabel="tasks · recent first" headRight="newest → oldest">
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            <LogTable history={history} />
           </div>
-        ) : (
-          [...history].reverse().map((item) => <HistoryRow key={item.id} item={item} />)
-        )}
+        </Panel>
       </div>
     </div>
   );

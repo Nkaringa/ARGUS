@@ -23,6 +23,10 @@ export function useBuildSocket() {
   const [droppedLineCount, setDroppedLineCount] = useState(0);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
+  // Timestamp of the last state transition. Lives in the hook (not BuildView) so
+  // the elapsed-time display survives tab switches — otherwise unmounting the
+  // view resets the counter to 0.
+  const [stageStartedAt, setStageStartedAt] = useState<number>(() => Date.now());
   const wsRef = useRef<WebSocket | null>(null);
   const connectRef = useRef<() => void>(() => {});
   // Reconnect attempt counter for exponential backoff. Resets to 0 on successful
@@ -43,7 +47,10 @@ export function useBuildSocket() {
       const msg = JSON.parse(e.data);
 
       if (msg.type === 'state') {
-        setState(msg.state);
+        setState((prev) => {
+          if (prev !== msg.state) setStageStartedAt(Date.now());
+          return msg.state;
+        });
         if (msg.task !== undefined) setTask(msg.task);
         if (msg.iteration !== undefined) setIteration(msg.iteration);
         if (msg.grade !== undefined) setGrade(msg.grade);
@@ -158,5 +165,5 @@ export function useBuildSocket() {
     setDroppedLineCount(0);
   }, []);
 
-  return { state, task, iteration, grade, slug, lines, droppedLineCount, history, projects, submitTask, sendApproval, stop };
+  return { state, task, iteration, grade, slug, stageStartedAt, lines, droppedLineCount, history, projects, submitTask, sendApproval, stop };
 }
