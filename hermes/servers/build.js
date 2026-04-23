@@ -4,6 +4,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const fs = require('fs');
 
 const { connectNATS, subscribe } = require('../core/events');
 const { startWatcher } = require('../core/watcher');
@@ -11,7 +12,7 @@ const { startWorkflow, submitTask, sendApproval, getState, setBroadcast } = requ
 const { getHistory, sweepStaleRunningTasks } = require('../core/db');
 const { corsMiddleware, authMiddleware, wsAuth } = require('../core/auth');
 const { ensureRoleDocs } = require('../core/role-docs');
-const { listProjectFolders, listBuildHistory, readBuildHistory, isValidTaskSlug } = require('../core/archive');
+const { listProjectFolders, listBuildHistory, readBuildHistory, isValidTaskSlug, buildFileTree } = require('../core/archive');
 const { validateEnv } = require('../core/env');
 
 validateEnv('build', {
@@ -90,6 +91,62 @@ app.post('/task', (req, res) => {
 // offer "Continue: <slug>" options. Filters out system folders and dotfiles.
 app.get('/projects', (req, res) => {
     res.json({ projects: listProjectFolders() });
+});
+
+// GET /files — full WORK_DIR tree for the UI file browser. Depth-capped and
+// excludes system folders. Polled every few seconds by the sidebar; keep cheap.
+app.get('/files', (req, res) => {
+    res.json({ root: process.env.WORK_DIR || '', tree: buildFileTree() });
+});
+
+// GET /files/content?path=<rel> — returns the requested file as text so the UI
+// can preview it. Strict path safety: resolves the final absolute path and
+// rejects anything that escapes WORK_DIR. 500KB cap and a null-byte heuristic
+// prevent us from shipping a 100MB binary into a browser modal.
+const FILE_PREVIEW_MAX_BYTES = 500_000;
+app.get('/files/content', (req, res) => {
+    const rel = typeof req.query.path === 'string' ? req.query.path : '';
+    if (!rel) return res.status(400).json({ error: 'path query param required' });
+
+    const WORK_DIR = path.resolve(process.env.WORK_DIR || '');
+    if (!WORK_DIR) return res.status(500).json({ error: 'WORK_DIR not configured' });
+
+    const full = path.resolve(WORK_DIR, rel);
+    const withinRoot = full === WORK_DIR || full.startsWith(WORK_DIR + path.sep);
+    if (!withinRoot) {
+        return res.status(403).json({ error: 'path escapes WORK_DIR' });
+    }
+
+    let stat;
+    try {
+        stat = fs.statSync(full);
+    } catch {
+        return res.status(404).json({ error: 'file not found' });
+    }
+    if (!stat.isFile()) return res.status(400).json({ error: 'not a file' });
+
+    if (stat.size > FILE_PREVIEW_MAX_BYTES) {
+        return res.status(413).json({
+            error: `file too large (${stat.size} bytes > ${FILE_PREVIEW_MAX_BYTES} cap)`,
+            size: stat.size,
+        });
+    }
+
+    let buf;
+    try {
+        buf = fs.readFileSync(full);
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+
+    // Binary heuristic: a null byte in the first 8KB is a strong signal.
+    // Not perfect (UTF-16 would false-positive) but good enough for source files.
+    const sample = buf.subarray(0, 8192);
+    if (sample.includes(0)) {
+        return res.json({ binary: true, size: stat.size, mtime: stat.mtimeMs });
+    }
+
+    res.json({ content: buf.toString('utf8'), size: stat.size, mtime: stat.mtimeMs });
 });
 
 // GET /history/builds — list archived build folders (newest first) for the Archive viewer.

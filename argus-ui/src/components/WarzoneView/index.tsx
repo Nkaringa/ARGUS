@@ -271,12 +271,32 @@ export function WarzoneView({ state, idea, slug, lines, droppedLineCount, onSubm
           </div>
         )}
 
-        {/* During the three agent phases, stream raw log output.
-            When the discussion completes, swap to the pretty-printed markdown review. */}
-        {showApproval ? (
-          <DiscussionReview refreshKey={state} />
-        ) : (
-          lines.length > 0 && <DiscussionPanel lines={lines} droppedLineCount={droppedLineCount} />
+        {/* Three-column discussion view — populates per-agent as each turn completes.
+            During busy states the active agent's column shows a running indicator;
+            completed columns show their markdown content. Idle state falls through to
+            the submit form / explainer above. */}
+        {state !== 'idle' && <DiscussionReview state={state} />}
+
+        {/* Raw agent stdout — kept as a collapsible "peek under the hood" affordance.
+            Default closed during busy; the 3-column view is the primary surface now. */}
+        {busy && lines.length > 0 && (
+          <details className="shrink-0">
+            <summary
+              className="uppercase cursor-pointer"
+              style={{
+                fontSize: 12,
+                letterSpacing: '0.15em',
+                color: '#757575',
+                padding: '8px 0',
+                listStyle: 'none',
+              }}
+            >
+              Agent output ({lines.length + droppedLineCount} {lines.length + droppedLineCount === 1 ? 'line' : 'lines'})
+            </summary>
+            <div style={{ marginTop: 16, height: 280, display: 'flex', flexDirection: 'column' }}>
+              <DiscussionPanel lines={lines} droppedLineCount={droppedLineCount} />
+            </div>
+          </details>
         )}
 
         {/* Approval */}

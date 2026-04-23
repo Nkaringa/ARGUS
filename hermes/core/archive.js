@@ -306,9 +306,50 @@ function listProjectFolders() {
         .sort();
 }
 
+// Walks WORK_DIR into a tree for the UI file browser. Skips SYSTEM_FOLDERS +
+// dotfiles and depth-caps at `maxDepth` so a project with nested node_modules
+// or deep asset trees doesn't produce a megabyte-sized payload per poll.
+function buildFileTree(maxDepth = 4) {
+    const WORK_DIR = process.env.WORK_DIR;
+    if (!WORK_DIR || !fs.existsSync(WORK_DIR)) return [];
+
+    function walk(dir, depth) {
+        let entries;
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+            return [];
+        }
+        return entries
+            .filter((e) => !e.name.startsWith('.') && !SYSTEM_FOLDERS.has(e.name))
+            .map((e) => {
+                const full = path.join(dir, e.name);
+                if (e.isDirectory()) {
+                    // Stop recursing at maxDepth — still surface the folder itself,
+                    // just with no children. Prevents infinite depth on symlink loops.
+                    const children = depth + 1 >= maxDepth ? [] : walk(full, depth + 1);
+                    return { name: e.name, type: 'dir', children };
+                }
+                try {
+                    const stat = fs.statSync(full);
+                    return { name: e.name, type: 'file', size: stat.size, mtime: stat.mtimeMs };
+                } catch {
+                    return { name: e.name, type: 'file' };
+                }
+            })
+            .sort((a, b) => {
+                if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+                return a.name.localeCompare(b.name);
+            });
+    }
+
+    return walk(WORK_DIR, 0);
+}
+
 module.exports = {
     archiveLiveFiles,
     archiveWarzoneFile,
+    buildFileTree,
     findLiveWarzoneSlug,
     isSafeSlug,
     isValidTaskSlug,

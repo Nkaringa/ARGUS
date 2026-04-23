@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
 import { clsx } from 'clsx';
 import type { BuildState, OutputLine } from '../../types';
+import { FileBrowser } from './FileBrowser';
 
 interface BuildViewProps {
   state: BuildState;
@@ -134,6 +135,166 @@ function OutputLog({ lines, droppedLineCount }: { lines: OutputLine[]; droppedLi
   );
 }
 
+// Per-stage agent, human-readable description, and a "typical" duration used as a
+// reference point — these are derived from the 16-task baseline captured in memory
+// (planning ~71s, building ~54s, auditing ~87s) rounded to cleaner numbers. They
+// exist only to ground the elapsed-time display; they do not gate anything.
+const STAGE_CONFIG: Partial<Record<BuildState, { agent: string; description: string; expectedSec: number }>> = {
+  planning: {
+    agent: 'Claude',
+    description: 'Writing the plan that Gemini will build from',
+    expectedSec: 70,
+  },
+  building: {
+    agent: 'Gemini',
+    description: 'Creating files from the plan',
+    expectedSec: 55,
+  },
+  auditing: {
+    agent: 'Codex',
+    description: 'Reviewing the build for correctness',
+    expectedSec: 90,
+  },
+};
+
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
+}
+
+function ActiveStageBanner({
+  state,
+  stageStartedAt,
+  iteration,
+}: {
+  state: BuildState;
+  stageStartedAt: number;
+  iteration: number;
+}) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const cfg = STAGE_CONFIG[state];
+  if (!cfg) return null;
+
+  const elapsedMs = now - stageStartedAt;
+  const elapsedSec = Math.floor(elapsedMs / 1000);
+  const overBudget = elapsedSec > cfg.expectedSec;
+
+  return (
+    <div
+      className="shrink-0"
+      style={{
+        background: '#f7f7f7',
+        padding: '40px 48px',
+        borderLeft: '2px solid #1c69d4',
+      }}
+    >
+      <div className="flex items-center" style={{ gap: 10, marginBottom: 12 }}>
+        <span
+          className="animate-pulse"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: '#1c69d4',
+            display: 'inline-block',
+          }}
+        />
+        <span
+          className="uppercase"
+          style={{ fontSize: 11, letterSpacing: '0.15em', color: '#757575' }}
+        >
+          Agent running{iteration > 0 ? ` · iteration ${iteration}` : ''}
+        </span>
+      </div>
+
+      <h2
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 40,
+          fontWeight: 300,
+          lineHeight: 1.15,
+          color: '#262626',
+          marginBottom: 12,
+          letterSpacing: '0.01em',
+        }}
+      >
+        <span style={{ color: '#1c69d4' }}>{cfg.agent}</span> is working
+      </h2>
+
+      <p
+        style={{
+          fontSize: 16,
+          fontWeight: 400,
+          color: '#262626',
+          lineHeight: 1.4,
+          marginBottom: 32,
+          maxWidth: 640,
+        }}
+      >
+        {cfg.description}.
+      </p>
+
+      <div className="flex items-baseline" style={{ gap: 56, flexWrap: 'wrap' }}>
+        <div>
+          <div
+            className="uppercase"
+            style={{ fontSize: 11, letterSpacing: '0.15em', color: '#757575', marginBottom: 6 }}
+          >
+            Elapsed
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 32,
+              fontWeight: 300,
+              color: overBudget ? '#262626' : '#1c69d4',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {formatElapsed(elapsedMs)}
+          </div>
+        </div>
+        <div>
+          <div
+            className="uppercase"
+            style={{ fontSize: 11, letterSpacing: '0.15em', color: '#757575', marginBottom: 6 }}
+          >
+            Typical
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 32,
+              fontWeight: 300,
+              color: '#bbbbbb',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {cfg.expectedSec}s
+          </div>
+        </div>
+        {overBudget && (
+          <div style={{ alignSelf: 'flex-end', paddingBottom: 8 }}>
+            <span
+              className="uppercase"
+              style={{ fontSize: 11, letterSpacing: '0.15em', color: '#757575' }}
+            >
+              Taking longer than usual
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function BuildView({
   state,
   task,
@@ -162,6 +323,15 @@ export function BuildView({
   const showPaused = state === 'paused';
   const continueSlug = effectiveProjectSel === 'new' ? null : effectiveProjectSel;
 
+  // Stamp when each stage begins so the banner can show elapsed time. Resetting
+  // on every state change is intentional — planning → building → auditing each
+  // get their own counter, and transitions back to idle/done clear it naturally
+  // (the banner only renders during busy states anyway).
+  const [stageStartedAt, setStageStartedAt] = useState<number>(() => Date.now());
+  useEffect(() => {
+    setStageStartedAt(Date.now());
+  }, [state]);
+
   const handleSubmit = () => {
     const text = input.trim();
     if (!text) return;
@@ -181,7 +351,9 @@ export function BuildView({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white text-[#262626]">
+    <div className="flex h-full bg-white text-[#262626]">
+      <FileBrowser />
+      <div className="flex-1 min-w-0 flex flex-col h-full">
       {/* Header */}
       <div className="shrink-0" style={{ padding: '48px 60px 32px', borderBottom: '1px solid #bbbbbb' }}>
         <div className="flex items-start justify-between">
@@ -248,7 +420,31 @@ export function BuildView({
 
       {/* Content */}
       <div className="flex-1 flex flex-col min-h-0" style={{ padding: '40px 60px', gap: 32 }}>
-        {lines.length > 0 && <OutputLog lines={lines} droppedLineCount={droppedLineCount} />}
+        {busy && (
+          <ActiveStageBanner state={state} stageStartedAt={stageStartedAt} iteration={iteration} />
+        )}
+
+        {busy && lines.length > 0 ? (
+          <details className="shrink-0">
+            <summary
+              className="uppercase cursor-pointer"
+              style={{
+                fontSize: 12,
+                letterSpacing: '0.15em',
+                color: '#757575',
+                padding: '8px 0',
+                listStyle: 'none',
+              }}
+            >
+              Agent output ({lines.length + droppedLineCount} {lines.length + droppedLineCount === 1 ? 'line' : 'lines'})
+            </summary>
+            <div style={{ marginTop: 16, height: 320, display: 'flex', flexDirection: 'column' }}>
+              <OutputLog lines={lines} droppedLineCount={droppedLineCount} />
+            </div>
+          </details>
+        ) : (
+          lines.length > 0 && <OutputLog lines={lines} droppedLineCount={droppedLineCount} />
+        )}
 
         {/* Approval panel */}
         {showApproval && (
@@ -408,6 +604,7 @@ export function BuildView({
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
