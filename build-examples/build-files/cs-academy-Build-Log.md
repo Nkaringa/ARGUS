@@ -1,0 +1,102 @@
+# CS Academy Build Log
+
+### Iteration 1 — Initial Build
+- **Timestamp:** 2026-04-23 15:00
+- **Status:** COMPLETED
+- **Task:** Create a web application to learn system design and data structures fundamentals with good descriptions and high end animations.
+- **Files Created/Modified:**
+  - `cs-academy/package.json` — Project dependencies and scripts.
+  - `cs-academy/vite.config.ts` — Vite configuration with path aliases.
+  - `cs-academy/tsconfig.json` — TypeScript configuration.
+  - `cs-academy/tailwind.config.ts` — Tailwind CSS configuration with theme tokens.
+  - `cs-academy/index.html` — Root HTML with theme-flash prevention.
+  - `cs-academy/src/index.css` — Global styles and CSS variables.
+  - `cs-academy/src/main.tsx` — Application entry point.
+  - `cs-academy/src/App.tsx` — Main layout shell.
+  - `cs-academy/src/router.tsx` — Routing configuration.
+  - `cs-academy/src/types.ts` — Core data models.
+  - `cs-academy/src/content/` — 13 lesson modules (7 Data Structures, 6 System Design).
+  - `cs-academy/src/components/animations/` — 13 interactive visualizers using Framer Motion.
+  - `cs-academy/src/components/layout/` — Navbar, Sidebar, Footer, ScrollToTop.
+  - `cs-academy/src/components/ui/` — Button, Card, Badge, CodeBlock, ThemeToggle.
+  - `cs-academy/src/components/home/` — Hero, CategoryGrid, FeaturedTopics.
+  - `cs-academy/src/components/lesson/` — LessonLayout, Section, Complexity.
+  - `cs-academy/src/pages/` — HomePage, CategoryPage, LessonPage, NotFoundPage.
+  - `cs-academy/src/hooks/` — useTheme, useReducedMotion, useLessonBySlug.
+  - `cs-academy/src/lib/` — cn, motion helpers.
+- **Audit Grade:** [Pending]
+- **Notes:**
+  - Used `React.lazy` for animation components to ensure the home page bundle remains light, as requested in the plan.
+  - Implemented a custom `ScrollToTop` component to handle scroll reset on navigation since React Router 6 doesn't do it automatically.
+  - Used `Lenis` for smooth scrolling as suggested in the architecture.
+  - All 13 animations are self-contained and interactive, demonstrating the key concepts of each topic.
+  - Dark mode is implemented via `data-theme` attribute and CSS variables, with `localStorage` persistence and a flash-prevention script in `index.html`.
+
+---
+### Iteration 2 — Revision & Polish
+- **Timestamp:** 2026-04-23 23:00
+- **Status:** COMPLETED
+- **Task:** Address audit feedback from Iteration 1: fix routing, accessibility, responsiveness, and content depth.
+- **Files Created/Modified:**
+  - `cs-academy/src/router.tsx` — Fixed routing to handle 404s and explicit paths.
+  - `cs-academy/src/hooks/useLessonBySlug.ts` — Added category validation.
+  - `cs-academy/src/pages/LessonPage.tsx` — Validated category/slug, added Suspense for animations.
+  - `cs-academy/src/pages/CategoryPage.tsx` — Fixed prop-based category rendering.
+  - `cs-academy/src/components/lesson/LessonLayout.tsx` — Added mobile topic picker and related topics section.
+  - `cs-academy/src/components/animations/*.tsx` — Updated all 13 animations for reduced motion, responsiveness, and type safety.
+  - `cs-academy/src/components/home/Hero.tsx` — Respects reduced motion.
+  - `cs-academy/src/components/home/CategoryGrid.tsx` — Replaced hardcoded colors with theme tokens.
+  - `cs-academy/src/components/layout/Navbar.tsx` — Added aria-label to mobile menu.
+  - `cs-academy/src/components/layout/ScrollToTop.tsx` — Coordinated with Lenis for smooth scroll restoration.
+  - `cs-academy/src/content/system-design/*.ts` — Expanded lessons to 4 sections (Problem, Solution, Practice, Trade-offs).
+  - `cs-academy/package.json` — Fixed incorrect lenis dependency.
+  - `cs-academy/tsconfig.json` — Fixed deprecation warnings.
+  - `cs-academy/src/index.css` — Fixed Tailwind class error.
+- **Audit Grade:** [Pending]
+- **Notes:**
+  - Implemented a custom mobile navigation picker in `LessonLayout` to replace the missing sidebar on small screens.
+  - Refactored `LoadBalancerAnim` and `CdnAnim` to use object-based keyframes to satisfy TypeScript while maintaining smooth multi-stage animations.
+  - Replaced the CDN "WORLD MAP" placeholder with a stylized SVG map.
+  - Fixed `lenis` dependency issue by switching to the correct `lenis/react` entry point.
+  - Ensured all 13 animations follow a strict pattern for `setTimeout` cleanup and `useReducedMotion` support.
+  - All type errors and build warnings have been resolved.
+
+---
+### Iteration 3 — Advanced Interactions & Accessibility
+- **Timestamp:** 2026-04-23 23:30
+- **Status:** COMPLETED
+- **Task:** Fix complexity contract, implement true reduced-motion fallbacks, consolidate theme state, and complete animation interaction gaps.
+- **Files Created/Modified:**
+  - `cs-academy/src/types.ts` — Made `access` required in `ComplexityTable`.
+  - `cs-academy/src/content/data-structures/graph.ts` — Populated missing `access` value.
+  - `cs-academy/src/hooks/useTheme.tsx` — Renamed to .tsx and refactored to use React Context for global state synchronization.
+  - `cs-academy/src/main.tsx` — Wrapped application in `ThemeProvider`.
+  - `cs-academy/src/components/animations/*.tsx` — Implemented true static-diagram fallbacks for all 13 visualizers under `prefers-reduced-motion`.
+  - `cs-academy/src/components/animations/LoadBalancerAnim.tsx` — Added Least Connections mode and server health toggle.
+  - `cs-academy/src/components/animations/GraphAnim.tsx` — Added BFS/DFS toggles and source node selection.
+  - `cs-academy/src/components/animations/ShardingAnim.tsx` — Added Range-based sharding mode and rebalance simulation.
+  - `cs-academy/src/components/animations/MessageQueueAnim.tsx` — Added backpressure (queue limits) and consumer crash/retry logic.
+  - `cs-academy/src/components/animations/CdnAnim.tsx` — Replaced hardcoded shadow with theme-token variable.
+- **Audit Grade:** [Pending]
+- **Notes:**
+  - All 13 animations now provide a completely static, labeled SVG/HTML diagram when reduced motion is preferred, fulfilling the strict accessibility requirement.
+  - Theme toggles in the navbar (both mobile and desktop) are now perfectly synchronized via React Context.
+  - Added significant depth to the "System Design" animations with multi-mode interactions (e.g., Round Robin vs Least Connections).
+  - Verified the build with `npm run typecheck` and `npm run build`, confirming that all animations are correctly code-split into individual chunks.
+
+---
+### Iteration 5 — Accessibility & SVG Animation Refinement
+- **Timestamp:** 2026-04-24 00:10
+- **Status:** COMPLETED
+- **Task:** Fix graph focus indicator, rework BST SVG animations, and fix CDN undefined tokens.
+- **Files Created/Modified:**
+  - `cs-academy/src/index.css` — Added `--accent-rgb` token for both light and dark themes.
+  - `cs-academy/src/components/animations/GraphAnim.tsx` — Replaced CSS focus rings with an explicit SVG focus halo for better visibility.
+  - `cs-academy/src/components/animations/BinaryTreeAnim.tsx` — Reworked SVG animations to use direct coordinate transitions instead of the `layout` prop.
+  - `cs-academy/src/components/animations/CdnAnim.tsx` — Fixed the cached-edge background tint by using the now-defined `--accent-rgb` token.
+- **Audit Grade:** [Pending]
+- **Notes:**
+  - `BinaryTreeAnim` now follows the plan's SVG-motion guidance by animating `cx`, `cy`, `x`, `y`, `x1`, `y1`, `x2`, and `y2` directly, ensuring smooth transitions without the performance overhead or potential glitches of the `layout` prop on SVG elements.
+  - Improved keyboard accessibility in `GraphAnim` by rendering a custom SVG halo around the focused node, which provides a much more reliable and visible indicator than standard CSS outlines on complex SVG groups.
+  - Fixed the visual bug in `CdnAnim` where the cached state background was invisible due to the missing `--accent-rgb` variable.
+  - Verified that `npm run typecheck` and `npm run build` continue to pass with zero errors.
