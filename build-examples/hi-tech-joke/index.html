@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hi & Tech Joke</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-primary: #1c1e21;
+            --text-secondary: #606770;
+            --accent-color: #007bff;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-width: 450px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            margin: 0 0 1.5rem 0;
+            color: var(--accent-color);
+            letter-spacing: -1px;
+        }
+
+        .setup {
+            border-top: 1px solid #eee;
+            padding-top: 1.5rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0 0 0.75rem 0;
+            line-height: 1.4;
+        }
+
+        .punchline {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin: 0;
+        }
+
+        @media (max-width: 480px) {
+            .card {
+                padding: 1.5rem;
+            }
+            h1 {
+                font-size: 2.5rem;
+            }
+            .setup {
+                font-size: 1.1rem;
+            }
+            .punchline {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <h1>hi</h1>
+        <p class="setup">Why do programmers prefer dark mode?</p>
+        <p class="punchline">Because light attracts bugs.</p>
+    </main>
+</body>
+</html>

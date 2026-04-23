@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Technical Joke</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f7f7f8;
+            color: #1a1a1a;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        main {
+            max-width: 40rem;
+            padding: 2rem;
+            width: 100%;
+        }
+
+        blockquote {
+            margin: 0;
+            padding: 0;
+        }
+
+        .setup {
+            font-size: clamp(1.25rem, 3vw, 1.75rem);
+            color: #444;
+            margin: 0 0 0.75rem 0;
+        }
+
+        .punchline {
+            font-size: clamp(1.75rem, 5vw, 2.75rem);
+            font-weight: 700;
+            color: #1a1a1a;
+            margin: 0;
+        }
+
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            background-color: rgba(0, 0, 0, 0.05);
+            padding: 0.1em 0.3em;
+            border-radius: 4px;
+            font-size: 0.95em;
+        }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1 class="visually-hidden">A Technical Joke</h1>
+        <blockquote>
+            <p class="setup">There are <code>10</code> types of people in this world:</p>
+            <p class="punchline">those who understand <code>binary</code>, and those who don't.</p>
+        </blockquote>
+    </main>
+</body>
+</html>
