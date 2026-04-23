@@ -1,0 +1,490 @@
+:root {
+    --ink: #0a0f1e;
+    --sea: #122038;
+    --gold: #d4a64a;
+    --cream: #f3ead8;
+    --mist: rgba(243, 234, 216, 0.7);
+    --font-heading: 'Cinzel', serif;
+    --font-body: 'Inter', sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: linear-gradient(to bottom, #0a0f1e, #122038);
+    color: var(--cream);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    overflow-x: hidden;
+}
+
+#bg-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+/* Sections */
+section {
+    min-height: 60vh;
+    padding: 12vh 0;
+    display: flex;
+    align-items: center;
+}
+
+#hero {
+    height: 100vh;
+    text-align: center;
+    justify-content: center;
+    position: relative;
+}
+
+#hero h1 {
+    font-family: var(--font-heading);
+    font-size: clamp(3rem, 10vw, 6rem);
+    letter-spacing: 0.5rem;
+    color: var(--gold);
+    margin-bottom: 0.5rem;
+    text-shadow: 0 0 20px rgba(212, 166, 74, 0.3);
+    position: relative;
+    z-index: 1;
+}
+
+#hero-title {
+    display: inline-block;
+}
+
+.letter {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(40px) scale(0.8);
+    animation: letter-drop 0.9s cubic-bezier(.2,.9,.3,1.2) forwards;
+}
+
+@keyframes letter-drop {
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.jolly-roger {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 640px;
+    max-width: 90vw;
+    color: var(--gold);
+    opacity: 0.08;
+    z-index: 0;
+    pointer-events: none;
+    animation: flag-ripple 7s ease-in-out infinite;
+}
+
+@keyframes flag-ripple {
+    0%, 100% { transform: translate(-50%, -50%) skewX(0) translateX(0); }
+    50% { transform: translate(-50%, -50%) skewX(2deg) translateX(10px); }
+}
+
+.ship-silhouette {
+    position: absolute;
+    bottom: 20%;
+    width: 200px;
+    color: var(--ink);
+    opacity: 0.4;
+    z-index: 0;
+    pointer-events: none;
+    animation: ship-drift 40s linear infinite;
+}
+
+@keyframes ship-drift {
+    from { left: -20%; }
+    to { left: 120%; }
+}
+
+.ship-silhouette svg {
+    animation: ship-bob 4s ease-in-out infinite alternate;
+}
+
+@keyframes ship-bob {
+    from { transform: translateY(0); }
+    to { transform: translateY(-10px); }
+}
+
+.log-pose {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 1rem;
+    color: var(--gold);
+    opacity: 0.7;
+}
+
+#compass-needle {
+    transform-origin: 50% 50%;
+    animation: compass-spin 12s linear infinite;
+}
+
+@keyframes compass-spin {
+    0% { transform: rotate(0deg); }
+    30% { transform: rotate(120deg); }
+    55% { transform: rotate(110deg); }
+    80% { transform: rotate(280deg); }
+    100% { transform: rotate(360deg); }
+}
+
+#hero .subtitle {
+    font-family: var(--font-heading);
+    font-size: clamp(1rem, 2.5vw, 1.5rem);
+    letter-spacing: 0.2rem;
+    color: var(--mist);
+    margin-bottom: 2rem;
+}
+
+#hero .tagline {
+    font-weight: 300;
+    opacity: 0.8;
+}
+
+.scroll-indicator {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.arrow {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-right: 2px solid var(--gold);
+    border-bottom: 2px solid var(--gold);
+    transform: rotate(45deg);
+    animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+    0%, 20%, 50%, 80%, 100% { transform: translateY(0) rotate(45deg); }
+    40% { transform: translateY(-10px) rotate(45deg); }
+    60% { transform: translateY(-5px) rotate(45deg); }
+}
+
+/* Layouts */
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: center;
+}
+
+.two-col.reverse {
+    direction: ltr; /* Reset to normal flow */
+}
+
+.centered {
+    text-align: center;
+}
+
+h2 {
+    font-family: var(--font-heading);
+    font-size: 2.5rem;
+    color: var(--gold);
+    margin-bottom: 2rem;
+    position: relative;
+}
+
+p {
+    margin-bottom: 1.5rem;
+    font-size: 1.1rem;
+    color: var(--mist);
+}
+
+/* Crew Cards */
+.crew-cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 3rem;
+    perspective: 1000px;
+}
+
+.card {
+    width: 160px;
+    height: 220px;
+    cursor: pointer;
+}
+
+.card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
+}
+
+.card.is-flipped .card-inner {
+    transform: rotateY(180deg);
+}
+
+.card-face {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    border: 1px solid rgba(212, 166, 74, 0.3);
+    border-radius: 4px;
+    font-family: var(--font-heading);
+    color: var(--gold);
+    transition: all 0.3s ease;
+}
+
+.card-face--front {
+    background: rgba(10, 15, 30, 0.5);
+    font-size: 0.9rem;
+}
+
+.card-face--back {
+    background: linear-gradient(135deg, #e3d2b2, #c7a46e);
+    color: #2a1b0a;
+    transform: rotateY(180deg);
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.2rem;
+    border: 4px solid #8b4513;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
+}
+
+.card-face--back .bounty {
+    font-size: 0.8rem;
+    display: block;
+    margin-top: 0.5rem;
+}
+
+.card:not(.is-flipped):hover .card-face--front {
+    background: rgba(212, 166, 74, 0.1);
+    border-color: var(--gold);
+}
+
+@media (hover: hover) {
+    .card:not(.is-flipped):hover {
+        animation: gomu-stretch 0.6s cubic-bezier(.3, 1.5, .6, 1);
+    }
+}
+
+@keyframes gomu-stretch {
+    0%, 100% { transform: scale(1); }
+    30% { transform: scale(1.15, 0.9); }
+    60% { transform: scale(0.95, 1.1); }
+}
+
+/* Haki Ripple (JS Injected) */
+.haki-ripple {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    width: 200%;
+    aspect-ratio: 1;
+    background: radial-gradient(circle, rgba(212,166,74,0.5) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0;
+}
+
+.ripple-on .haki-ripple {
+    animation: haki-burst 1.2s ease-out forwards;
+}
+
+@keyframes haki-burst {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+    20% { opacity: 0.8; }
+    100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+}
+
+/* Quote Wipe Transition */
+.quote {
+    font-family: var(--font-heading);
+    font-size: 1.8rem;
+    font-style: italic;
+    color: var(--gold);
+    display: none;
+    clip-path: inset(0 100% 0 0);
+    -webkit-clip-path: inset(0 100% 0 0);
+    transition: clip-path 0.8s ease-out, -webkit-clip-path 0.8s ease-out, filter 0.8s ease-out;
+}
+
+.quote.active {
+    display: block;
+    clip-path: inset(0 0 0 0);
+    -webkit-clip-path: inset(0 0 0 0);
+}
+
+.quote.exiting {
+    display: block;
+    clip-path: inset(0 0 0 100%);
+    -webkit-clip-path: inset(0 0 0 100%);
+    filter: blur(2px);
+}
+
+/* Bubble Trail (JS Injected) */
+.bubble {
+    position: fixed;
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--mist);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+    animation: float-up 2s ease-out forwards;
+}
+
+@keyframes float-up {
+    to {
+        transform: translateY(-80px) scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Separators */
+.brush-separator {
+    width: 100%;
+    height: 40px;
+    color: var(--gold);
+    opacity: 0.3;
+    overflow: hidden;
+}
+
+.brush-separator path {
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+    transition: stroke-dashoffset 1.2s ease-in-out;
+}
+
+.reveal-section.is-visible + .brush-separator path,
+.brush-separator.is-visible path {
+    stroke-dashoffset: 0;
+}
+
+/* Footer Divider Shimmer */
+.divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--gold), transparent);
+    margin-bottom: 2rem;
+    opacity: 0.5;
+    position: relative;
+    overflow: hidden;
+}
+
+.divider::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(to right, transparent, rgba(212, 166, 74, 0.8), transparent);
+    animation: shimmer 6s linear infinite;
+}
+
+@keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 200%; }
+}
+
+/* Quotes */
+.reveal-section {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+}
+
+.reveal-section.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Responsive */
+@media (max-width: 720px) {
+    .two-col {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+        text-align: center;
+    }
+
+    .two-col.reverse {
+        display: flex;
+        flex-direction: column-reverse;
+    }
+
+    section {
+        padding: 8vh 0;
+    }
+
+    h2 {
+        font-size: 2rem;
+    }
+
+    #hero h1 {
+        font-size: 4rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reveal-section {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+
+    .arrow, .letter, .jolly-roger, .ship-silhouette, .ship-silhouette svg, #compass-needle, .card:not(.is-flipped):hover, .haki-ripple, .divider::after {
+        animation: none !important;
+    }
+
+    .letter {
+        opacity: 1;
+        transform: none;
+    }
+
+    .quote, .quote.exiting {
+        transition: opacity 1s ease;
+        clip-path: none !important;
+        -webkit-clip-path: none !important;
+        filter: none !important;
+    }
+
+    .quote.active {
+        opacity: 1;
+    }
+
+    .quote:not(.active) {
+        opacity: 0;
+        display: none;
+    }
+
+    .brush-separator path {
+        stroke-dashoffset: 0 !important;
+        transition: none !important;
+    }
+}

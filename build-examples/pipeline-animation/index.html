@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Argus Pipeline — Multi-Agent Autonomy</title>
+    <script>document.documentElement.classList.add('js-enabled');</script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="mini-timeline" aria-hidden="true">
+        <div class="dot active" data-scene="0"></div>
+        <div class="dot" data-scene="1"></div>
+        <div class="dot" data-scene="2"></div>
+        <div class="dot" data-scene="3"></div>
+        <div class="dot" data-scene="4"></div>
+        <div class="dot" data-scene="5"></div>
+    </nav>
+
+    <main>
+        <!-- Scene 0: Hero -->
+        <section id="scene-0" class="scene active">
+            <div class="content">
+                <h1 id="hero-title" class="particles-text" aria-label="Argus">
+                    <span class="particle" data-char="A">A</span>
+                    <span class="particle" data-char="r">r</span>
+                    <span class="particle" data-char="g">g</span>
+                    <span class="particle" data-char="u">u</span>
+                    <span class="particle" data-char="s">s</span>
+                </h1>
+                <p id="hero-tagline" class="typing-text" data-text="A four-agent build pipeline that plans, builds, audits, and ships — on loop."></p>
+            </div>
+            <div class="scroll-cue" aria-hidden="true">
+                <svg width="30" height="20" viewBox="0 0 30 20">
+                    <path d="M2,2 L15,15 L28,2" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+            </div>
+        </section>
+
+        <!-- Scene 1: The Four Agents -->
+        <section id="scene-1" class="scene">
+            <div class="container">
+                <h2 class="scene-heading">The Four Agents</h2>
+                <div class="agents-grid">
+                    <div class="agent-avatar hermes" data-role="Hermes">
+                        <div class="avatar-circle"></div>
+                        <h3 class="role-label-typed" data-text="Hermes"></h3>
+                        <p class="role-desc">The Conductor</p>
+                    </div>
+                    <div class="agent-avatar claude" data-role="Claude">
+                        <div class="avatar-circle"></div>
+                        <h3 class="role-label-typed" data-text="Claude"></h3>
+                        <p class="role-desc">The Planner</p>
+                    </div>
+                    <div class="agent-avatar gemini" data-role="Gemini">
+                        <div class="avatar-circle"></div>
+                        <h3 class="role-label-typed" data-text="Gemini"></h3>
+                        <p class="role-desc">The Builder</p>
+                    </div>
+                    <div class="agent-avatar codex" data-role="Codex">
+                        <div class="avatar-circle"></div>
+                        <h3 class="role-label-typed" data-text="Codex"></h3>
+                        <p class="role-desc">The Auditor</p>
+                    </div>
+                </div>
+                <div class="topology-svg" aria-hidden="true">
+                    <svg width="100%" height="100%" viewBox="0 0 800 400">
+                        <!-- Hermes at hub, others in cycle -->
+                        <path id="topology-hub-1" class="hub-line" d="M400,200 L400,80" />
+                        <path id="topology-hub-2" class="hub-line" d="M400,200 L200,280" />
+                        <path id="topology-hub-3" class="hub-line" d="M400,200 L600,280" />
+                        <path id="topology-cycle" class="cycle-line" d="M400,80 L600,280 L200,280 Z" />
+                    </svg>
+                </div>
+            </div>
+        </section>
+
+        <!-- Scene 2: The Pipeline -->
+        <section id="scene-2" class="scene">
+            <div class="container">
+                <h2 class="scene-heading">The Automated Pipeline</h2>
+                <div class="pipeline-viz">
+                    <svg class="pipeline-svg" viewBox="0 0 1200 200" preserveAspectRatio="xMidYMid meet">
+                        <defs>
+                            <filter id="glow">
+                                <feGaussianBlur stdDeviation="3" result="blur"/>
+                                <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+                            </filter>
+                        </defs>
+                        <!-- Connection Lines -->
+                        <path class="connection" d="M150,100 L350,100" />
+                        <path class="connection" d="M400,100 L600,100" />
+                        <path class="connection" d="M650,100 L850,100" />
+                        <path class="connection archive-line" d="M900,100 L1050,100" opacity="0"/>
+                        <path id="revise-path" class="connection revise" d="M875,75 C875,20 625,20 625,75" opacity="0"/>
+                        <text x="750" y="35" class="revise-label" opacity="0">REVISE</text>
+                        
+                        <!-- Stations -->
+                        <circle cx="125" cy="100" r="30" class="station hermes" />
+                        <circle cx="375" cy="100" r="30" class="station claude" />
+                        <circle cx="625" cy="100" r="30" class="station gemini" />
+                        <circle cx="875" cy="100" r="30" class="station codex" />
+
+                        <!-- Archive Station -->
+                        <g id="archive-node" opacity="0">
+                            <circle cx="1075" cy="100" r="25" fill="none" stroke="var(--ok)" stroke-width="2" stroke-dasharray="2 2"/>
+                            <path d="M1065,100 L1072,110 L1085,90" fill="none" stroke="var(--ok)" stroke-width="3" stroke-linecap="round"/>
+                        </g>
+                        
+                        <!-- Task Token -->
+                        <g id="task-token">
+                            <rect x="-40" y="-15" width="80" height="30" rx="15" fill="#e7ecf3" filter="url(#glow)"/>
+                            <text x="0" y="5" text-anchor="middle" fill="#07080b" font-family="monospace" font-size="10" font-weight="bold">TASK-01</text>
+                        </g>
+                    </svg>
+                    
+                    <div class="status-box">
+                        <span id="pipeline-status">Idle</span>
+                    </div>
+
+                    <div class="artifacts-tray">
+                        <div id="artifact-plan" class="artifact-card claude">Plan</div>
+                        <div id="artifact-build" class="artifact-card gemini">Build</div>
+                        <div id="artifact-audit" class="artifact-card codex">Grade: A</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Scene 3: Meta Files -->
+        <section id="scene-3" class="scene">
+            <div class="container">
+                <h2 class="scene-heading">Meta Files as State</h2>
+                <div class="filesystem-viz">
+                    <div class="folder project-root">
+                        <span class="folder-label">project/</span>
+                        <div class="files-grid">
+                            <div class="file-item plan" data-name="pipeline-animation-Plan.md"></div>
+                            <div class="file-item build" data-name="pipeline-animation-Build-Log.md"></div>
+                            <div class="file-item feedback" data-name="pipeline-animation-Build-Feedback.md"></div>
+                            <div class="folder subfolder deliverable" data-name="pipeline-animation/"></div>
+                        </div>
+                    </div>
+                    <div class="archive-stack" aria-hidden="true">
+                        <div class="folder history">Build-History/</div>
+                        <div class="folder history ghost"></div>
+                        <div class="folder history ghost"></div>
+                    </div>
+                </div>
+                <p class="narrative">The filesystem is the state. Hermes moves files into place; agents read and write.</p>
+            </div>
+        </section>
+
+        <!-- Scene 4: WarZone -->
+        <section id="scene-4" class="scene">
+            <div class="container">
+                <h2 class="scene-heading">WarZone: Discussion Mode</h2>
+                <div class="warzone-viz">
+                    <div class="speech-bubbles-standalone">
+                        <div class="bubble claude">"Should we prioritize throughput or latency?"</div>
+                        <div class="bubble gemini">"Let's go with Redis for state management."</div>
+                        <div class="bubble codex">"Without metrics, we can't optimize either."</div>
+                    </div>
+                    <div class="warzone-doc-forming">
+                        <span class="doc-label">pipeline-animation-WarZone.md</span>
+                    </div>
+                </div>
+                <p class="narrative">Not every task builds code — sometimes the agents argue first.</p>
+            </div>
+        </section>
+
+        <!-- Scene 5: Closing -->
+        <section id="scene-5" class="scene">
+            <div class="container">
+                <h2 class="scene-heading">Continuous Autonomy</h2>
+                <div class="mini-pipeline-viz" aria-hidden="true">
+                    <svg viewBox="0 0 1000 100" width="400" id="mini-pipeline-svg">
+                        <circle cx="125" cy="50" r="10" class="mini-station" fill="var(--hermes)" opacity="0.3"/>
+                        <circle cx="375" cy="50" r="10" class="mini-station" fill="var(--claude)" opacity="0.3"/>
+                        <circle cx="625" cy="50" r="10" class="mini-station" fill="var(--gemini)" opacity="0.3"/>
+                        <circle cx="875" cy="50" r="10" class="mini-station" fill="var(--codex)" opacity="0.3"/>
+                        <path d="M150,50 L350,50 M400,50 L600,50 M650,50 L850,50" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 2" opacity="0.2"/>
+                        <circle id="mini-token" cx="125" cy="50" r="6" fill="var(--fg)" filter="url(#glow)"/>
+                    </svg>
+                </div>
+                <h2 class="closing-text">
+                    <span class="word plan">Plan.</span>
+                    <span class="word build">Build.</span>
+                    <span class="word audit">Audit.</span>
+                    <span class="word archive">Archive.</span>
+                    <span class="word repeat">Repeat.</span>
+                </h2>
+                <footer class="footer-note">Static demo. No agents were actually orchestrated in the making of this page.</footer>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

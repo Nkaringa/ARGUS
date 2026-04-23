@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Optimization Guide | Learn to Build Efficient LLM Apps</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <div class="logo">TokenGuide</div>
+            <ul class="nav-links">
+                <li><a href="#intro">Intro</a></li>
+                <li><a href="#why">Why Optimize</a></li>
+                <li><a href="#techniques">Techniques</a></li>
+                <li><a href="#estimator">Estimator</a></li>
+                <li><a href="#faq">FAQ</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero container">
+            <h1>Master Token Optimization</h1>
+            <p class="sub-hero">Learn how to build faster, cheaper, and more reliable LLM applications by mastering the art of token efficiency.</p>
+            <a href="#estimator" class="cta-button">Try the Token Estimator</a>
+        </section>
+
+        <section id="intro" class="container">
+            <h2>What is a Token?</h2>
+            <div class="content-block">
+                <p>In Large Language Models (LLMs), a token is the fundamental unit of text processing. Instead of reading text character by character or word by word, models break text down into chunks called tokens. These chunks can be as short as a single character or as long as a whole word.</p>
+                <p>For example, the word "<code>unbelievable</code>" is typically broken down into 3 tokens: "<code>un</code>", "<code>believ</code>", and "<code>able</code>". Common words often correspond to a single token, while rare words or complex symbols are split into multiple.</p>
+                <p><strong>Note:</strong> Tokenization is model-specific. OpenAI models (GPT), Anthropic models (Claude), and Google models (Gemini) all use slightly different tokenizers.</p>
+            </div>
+        </section>
+
+        <section id="why" class="container">
+            <h2>Why Optimize?</h2>
+            <div class="grid three-cols">
+                <div class="card">
+                    <h3>Reduce Cost</h3>
+                    <p><strong>API providers charge per token.</strong> Reducing your prompt size directly lowers your monthly bill and improves your project's ROI.</p>
+                </div>
+                <div class="card">
+                    <h3>Lower Latency</h3>
+                    <p><strong>Fewer tokens mean faster processing.</strong> Shorter prompts lead to quicker "Time to First Token" responses and a snappier user experience.</p>
+                </div>
+                <div class="card">
+                    <h3>Context Limits</h3>
+                    <p><strong>Every model has a maximum context window.</strong> Efficiency lets you fit more relevant data into every request and reduces the risk of cutting off important info.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="techniques" class="container">
+            <h2>Core Optimization Techniques</h2>
+            
+            <div class="technique">
+                <h3>1. Prompt Compression</h3>
+                <p><em>Minimize verbose instructions.</em> Remove filler words, use imperative voice, and eliminate redundant instructions. Modern LLMs are highly capable and don't need "polite" phrasing or long preambles to understand your intent. Direct, clear instructions often perform better and use significantly fewer tokens than conversational ones.</p>
+                <div class="code-wrapper">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code># Verbose:
+"Please try to rewrite this following paragraph to be much shorter while making sure you keep all the important information."
+
+# Optimized:
+"Summarize this paragraph concisely, retaining all key points."</code></pre>
+                </div>
+            </div>
+
+            <div class="technique">
+                <h3>2. System Prompt Reuse & Caching</h3>
+                <p><em>Cache static instructions.</em> Keep your instructions separate from user data. Many providers now offer prompt caching for frequently reused system messages, which can save up to 90% on input costs for long prefixes. By structuring your application to reuse a stable system prompt, you can dramatically improve both speed and cost-effectiveness.</p>
+                <div class="code-wrapper">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code># Set a static system prompt:
+"Role: Expert Editor. Tone: Professional. Task: Fix grammar and flow."</code></pre>
+                </div>
+            </div>
+
+            <div class="technique">
+                <h3>3. Structured Output</h3>
+                <p><em>Use JSON for machine consumption.</em> Request JSON or specific formats instead of free-form prose to reduce "chatty" responses and make downstream consumption easier. Explicitly asking for a structured format prevents the model from adding unnecessary conversational filler. This approach ensures you only pay for the data you actually need for your application's logic.</p>
+                <div class="code-wrapper">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code># Prompt:
+"Analyze the sentiment. Respond ONLY with a JSON object: {\"sentiment\": \"...\", \"score\": 0.0}"</code></pre>
+                </div>
+            </div>
+
+            <div class="technique">
+                <h3>4. Conversation Truncation</h3>
+                <p><em>Manage history strategically.</em> Don't send the entire chat history. Summarize older messages or only send the last N messages to stay within limits and keep the model focused on the current task. As conversations grow, the "noise" from early messages can confuse the model and inflate costs. Implementing a sliding window or summarization layer is essential for long-running agents.</p>
+                <div class="code-wrapper">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code># Strategy:
+# - Keep system prompt
+# - Keep most recent 5 messages
+# - Summarize previous 10 messages into one</code></pre>
+                </div>
+            </div>
+
+            <div class="technique">
+                <h3>5. Model Routing</h3>
+                <p><em>Select the right tool for the job.</em> Use cheaper, faster models (like Claude Haiku or GPT-4o-mini) for simple tasks like classification or routing before calling larger models. Not every request requires the reasoning power of a flagship model. Intelligent routing allows you to balance performance and price by matching task complexity to model capability.</p>
+                <div class="code-wrapper">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code>if (isSimpleTask(input)) {
+  return callHaiku(input);
+} else {
+  return callOpus(input);
+}</code></pre>
+                </div>
+            </div>
+
+            <div class="technique">
+                <h3>6. RAG & Intelligent Chunking</h3>
+                <p><em>Retrieve only what is necessary.</em> Instead of dumping whole documents into context, use Retrieval-Augmented Generation to only include the most relevant text snippets. High-quality chunking and embedding-based search ensure that the model has exactly the context it needs and nothing more. This technique is the most effective way to handle massive knowledge bases within narrow context windows.</p>
+                <div class="code-wrapper">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code># Approach:
+# 1. Embed document segments
+# 2. Query vector DB for top 3 matches
+# 3. Insert ONLY those matches into prompt</code></pre>
+                </div>
+            </div>
+
+            <div class="technique">
+                <h3>7. Few-Shot Example Pruning</h3>
+                <p><em>Quality over quantity.</em> Include only the most diverse and high-leverage examples. Five perfect, distinct examples are often better than twenty mediocre or repetitive ones. Over-providing examples can lead to "recency bias" or dilute the model's focus. Carefully curated few-shot examples provide the best "bang for your buck" in terms of performance per token.</p>
+                <div class="code-wrapper">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code># Bad: 10 similar examples
+# Good: 3 distinct edge cases</code></pre>
+                </div>
+            </div>
+
+            <div class="technique">
+                <h3>8. Output Length Control</h3>
+                <p><em>Set boundaries on verbosity.</em> Use parameters like <code>max_tokens</code> and explicit brevity instructions to prevent the model from being overly verbose. Models are often trained to be helpful and descriptive, which can lead to long-winded answers you didn't ask for. Controlling the output length directly manages your generation costs and keeps responses focused.</p>
+                <div class="code-wrapper">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code>{
+  "max_tokens": 100,
+  "prompt": "Explain RAG in one sentence."
+}</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="comparison" class="container">
+            <h2>Before vs. After Optimization</h2>
+            <p>Compare how simple prompt engineering can significantly reduce token usage without losing meaning.</p>
+            <div class="grid two-cols">
+                <div class="comparison-card">
+                    <h4>Verbose Prompt</h4>
+                    <div class="comparison-box" id="comparison-before">
+                        "I am working on a project where I need to take long articles and turn them into short summaries. Please take the following article that I am providing to you and create a summary of it that is about one paragraph long. Make sure you don't miss any of the main points that the author is trying to make."
+                    </div>
+                    <div class="token-badge">Est. <span id="before-count">0</span> tokens</div>
+                </div>
+                <div class="comparison-card">
+                    <h4>Optimized Prompt</h4>
+                    <div class="comparison-box" id="comparison-after">
+                        "Summarize the following article in one paragraph, ensuring all primary arguments are captured."
+                    </div>
+                    <div class="token-badge optimized">Est. <span id="after-count">0</span> tokens</div>
+                </div>
+            </div>
+            <div class="token-savings" id="savings-readout">
+                Estimated Savings: <span id="savings-count">0</span> tokens (<span id="savings-percent">0</span>%)
+            </div>
+        </section>
+
+        <section id="estimator" class="container">
+            <div class="estimator-wrapper">
+                <h2>Live Token Estimator</h2>
+                <div class="input-group">
+                    <label for="estimator-text">Paste your prompt or text here:</label>
+                    <textarea id="estimator-text" placeholder="Type something..."></textarea>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Estimated Tokens</span>
+                        <span class="stat-value" id="res-tokens">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Estimated Cost (Input)</span>
+                        <span class="stat-value" id="res-cost">$0.000000</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Characters</span>
+                        <span class="stat-value" id="res-chars">0</span>
+                    </div>
+                </div>
+                <p class="disclaimer">Note: This is a heuristic estimate (approx. 4 chars/token). Actual tokenization depends on the specific model used (GPT-4, Claude 3, etc.). Sample cost based on $3.00 / 1M tokens.</p>
+            </div>
+        </section>
+
+        <section id="faq" class="container">
+            <h2>Frequently Asked Questions</h2>
+            <details>
+                <summary>Does whitespace count towards tokens?</summary>
+                <div class="faq-content">
+                    <p>Yes. Spaces, tabs, and newlines all count as tokens or parts of tokens. In some tokenizers, multiple spaces might be combined, but generally, any character you send contributes to the total count.</p>
+                </div>
+            </details>
+            <details>
+                <summary>Do all models tokenize the same way?</summary>
+                <div class="faq-content">
+                    <p>No. Each model family usually has its own tokenizer (e.g., tiktoken for OpenAI, Llama's tokenizer, etc.). While the "4 characters per token" rule is a good rule of thumb for English, it varies by language and model.</p>
+                </div>
+            </details>
+            <details>
+                <summary>Is fewer tokens always better?</summary>
+                <div class="faq-content">
+                    <p>Not necessarily. If you compress a prompt too much (making it "lossy"), the model might lose the context it needs to perform well. The goal is "maximum efficiency," not just "minimum tokens."</p>
+                </div>
+            </details>
+            <details>
+                <summary>Do system prompts and user prompts both count?</summary>
+                <div class="faq-content">
+                    <p>Yes. The total tokens in a request include the system prompt, all messages in the conversation history, the user's latest prompt, and any specialized tokens used for formatting (like "Im_start" or "Im_end").</p>
+                </div>
+            </details>
+            <details>
+                <summary>What is Prompt Caching?</summary>
+                <div class="faq-content">
+                    <p>Prompt caching allows API providers to store frequently used prefixes (like long system instructions or many-shot examples) so you don't have to pay full price for them on every single request, often reducing costs by 90% for those specific tokens.</p>
+                </div>
+            </details>
+        </section>
+    </main>
+
+    <footer class="container">
+        <p>&copy; 2024 Token Optimization Guide. This is an educational resource.</p>
+        <div class="footer-links">
+            <span>Resources:</span>
+            <a href="#">OpenAI Tokenizer</a>
+            <a href="#">Anthropic Documentation</a>
+            <a href="#">Google Gemini API Docs</a>
+        </div>
+    </footer>
+</body>
+</html>

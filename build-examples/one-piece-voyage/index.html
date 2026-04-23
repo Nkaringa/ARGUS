@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One Piece — A Voyage Across the Grand Line</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <canvas id="bg-canvas"></canvas>
+
+    <main>
+        <section id="hero">
+            <div class="ship-silhouette" aria-hidden="true">
+                <svg viewBox="0 0 200 100" preserveAspectRatio="xMidYMid meet">
+                    <path d="M40,80 L160,80 L170,60 L30,60 Z" fill="currentColor" />
+                    <path d="M70,60 L70,20 M100,60 L100,10 M130,60 L130,25" stroke="currentColor" stroke-width="2" />
+                    <path d="M70,25 Q90,35 70,45 M100,15 Q125,30 100,45 M130,30 Q145,40 130,50" fill="none" stroke="currentColor" stroke-width="2" />
+                </svg>
+            </div>
+            <div class="jolly-roger" aria-hidden="true">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50,20 A25,25 0 1,0 50,70 A25,25 0 1,0 50,20 Z M35,45 A5,5 0 1,1 45,45 A5,5 0 1,1 35,45 Z M55,45 A5,5 0 1,1 65,45 A5,5 0 1,1 55,45 Z M45,60 Q50,65 55,60" fill="currentColor" />
+                    <path d="M20,20 L80,80 M80,20 L20,80" stroke="currentColor" stroke-width="6" stroke-linecap="round" />
+                    <path d="M30,35 Q50,25 70,35 L70,40 Q50,30 30,40 Z" fill="#d4a64a" />
+                </svg>
+            </div>
+            <div class="content">
+                <h1 id="hero-title">ONE PIECE</h1>
+                <p class="subtitle">A Voyage Across the Grand Line</p>
+                <p class="tagline">The sea is a place of boundless dreams and infinite freedom.</p>
+                <div class="scroll-indicator">
+                    <div class="log-pose" aria-hidden="true">
+                        <svg viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-width="2" />
+                            <circle cx="50" cy="50" r="5" fill="currentColor" />
+                            <path id="compass-needle" d="M50,10 L55,50 L50,90 L45,50 Z" fill="currentColor" />
+                        </svg>
+                    </div>
+                    <span class="arrow"></span>
+                </div>
+            </div>
+        </section>
+
+        <section class="reveal-section" id="dream">
+            <div class="container two-col">
+                <div class="col-left">
+                    <h2>Inherited Will</h2>
+                </div>
+                <div class="col-right">
+                    <p>Dreams are the sparks that light the fire of existence. In the vast expanse of the Blue Sea, one boy's aspiration to become the King of the Pirates is more than a simple quest for gold. It is a pursuit of the ultimate freedom—the ability to sail anywhere, to see everything, and to live without chains.</p>
+                    <p>The One Piece is not just a treasure; it is a symbol. It represents the culmination of a thousand-year history, the inherited will of those who came before, and the promise of a new era where the world is finally one.</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="brush-separator" aria-hidden="true">
+            <svg viewBox="0 0 1000 40" preserveAspectRatio="none">
+                <path d="M0,20 Q250,10 500,20 T1000,20" fill="none" stroke="currentColor" stroke-width="2" />
+            </svg>
+        </div>
+
+        <section class="reveal-section" id="nakama">
+            <div class="container centered">
+                <h2>Bonds Forged at Sea</h2>
+                <div class="content-block">
+                    <p>No one can cross the Grand Line alone. The strength of the Straw Hat crew lies not in their individual power, but in the unbreakable bonds of "Nakama"—a family found amidst the waves. They are a collection of dreamers, each with their own mountain to climb, yet all bound by a single, unwavering loyalty to one another.</p>
+                    <div class="crew-cards">
+                        <div class="card" data-bounty="3,000,000,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Captain</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">3,000,000,000</span></span>
+                            </div>
+                        </div>
+                        <div class="card" data-bounty="1,111,000,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Swordsman</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">1,111,000,000</span></span>
+                            </div>
+                        </div>
+                        <div class="card" data-bounty="366,000,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Navigator</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">366,000,000</span></span>
+                            </div>
+                        </div>
+                        <div class="card" data-bounty="500,000,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Sniper</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">500,000,000</span></span>
+                            </div>
+                        </div>
+                        <div class="card" data-bounty="1,032,000,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Cook</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">1,032,000,000</span></span>
+                            </div>
+                        </div>
+                        <div class="card" data-bounty="1,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Doctor</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">1,000</span></span>
+                            </div>
+                        </div>
+                        <div class="card" data-bounty="930,000,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Archaeologist</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">930,000,000</span></span>
+                            </div>
+                        </div>
+                        <div class="card" data-bounty="394,000,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Shipwright</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">394,000,000</span></span>
+                            </div>
+                        </div>
+                        <div class="card" data-bounty="383,000,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Musician</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">383,000,000</span></span>
+                            </div>
+                        </div>
+                        <div class="card" data-bounty="1,100,000,000">
+                            <div class="card-inner">
+                                <span class="card-face card-face--front">The Helmsman</span>
+                                <span class="card-face card-face--back">WANTED<br><span class="bounty">1,100,000,000</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="brush-separator" aria-hidden="true">
+            <svg viewBox="0 0 1000 40" preserveAspectRatio="none">
+                <path d="M0,20 Q250,30 500,20 T1000,20" fill="none" stroke="currentColor" stroke-width="2" />
+            </svg>
+        </div>
+
+        <section class="reveal-section" id="grand-line">
+            <div class="container two-col reverse">
+                <div class="col-left">
+                    <p>From the treacherous currents of Reverse Mountain to the mysterious shores of Laugh Tale, the world is a tapestry of wonder and danger. The Grand Line is a place where the logic of the world fails, where islands float in the sky and civilizations thrive beneath the waves.</p>
+                    <p>It is a test of spirit. Only those with the courage to face the unknown and the resilience to weather the storm will ever find what lies at the end of the horizon.</p>
+                </div>
+                <div class="col-right">
+                    <h2>Beyond the Red Line</h2>
+                </div>
+            </div>
+        </section>
+
+        <section class="reveal-section" id="quotes">
+            <div class="container centered">
+                <div class="quote-container">
+                    <blockquote class="quote active">"The sea will always be free, as long as there are those brave enough to dream."</blockquote>
+                    <blockquote class="quote">"Though a voyager may fall, the spirit of their quest is carried forward by the rising tide."</blockquote>
+                    <blockquote class="quote">"If you don't take risks, you can't create a future worth living for."</blockquote>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="divider"></div>
+            <p>A fan tribute. One Piece © Eiichiro Oda / Shueisha.</p>
+            <p class="year">2026</p>
+        </div>
+    </footer>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>

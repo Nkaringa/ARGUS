@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Favorite Anime Showcase</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>My Favorite Anime</h1>
+            <p class="tagline">A curated collection of legendary series and films.</p>
+        </div>
+    </header>
+
+    <section class="filters container">
+        <div class="filter-group">
+            <label for="genre-filter">Filter by genre</label>
+            <select id="genre-filter">
+                <option value="all">All Genres</option>
+            </select>
+        </div>
+    </section>
+
+    <main id="anime-grid" class="grid container">
+        <!-- populated by script.js -->
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>Built with ❤️ for Anime Fans</p>
+        </div>
+    </footer>
+
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
