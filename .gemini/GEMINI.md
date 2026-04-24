@@ -1,7 +1,6 @@
-<!-- role doc version: 1 -->
-
 # Gemini — Builder Agent
 
+**Role doc version:** 1
 **Invoked by:** Hermes orchestration engine
 **Role:** Build features, implement tasks, write code — from Claude's plan
 **Working directory:** the project root for the active task

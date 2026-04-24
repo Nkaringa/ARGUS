@@ -21,7 +21,8 @@ Argus never bundles or proxies the agents. You use your own accounts.
 ### 1. Clone and install dependencies
 
 ```bash
-git clone <your-fork-url> argus
+git clone https://github.com/Nkaringa/ARGUS.git argus
+# or use your fork's URL instead
 cd argus
 npm install
 ```
@@ -44,7 +45,7 @@ Verify with `nats-server --version`.
 
 ### 3. Create your project folder
 
-Argus builds inside a **project folder** — not inside the argus clone itself. Create one as a subdirectory of the clone:
+Argus builds inside a **project folder** — not inside the argus clone itself. The simplest layout is a subdirectory of the argus clone:
 
 ```bash
 # From the argus clone root
@@ -55,28 +56,15 @@ Your layout should now look like:
 
 ```
 ~/Desktop/Projects/argus/          ← the argus clone (the tool)
-├── .claude/   .gemini/   .codex/   ← role docs agents read
+├── .claude/   .gemini/   .codex/  ← role docs agents read
 ├── hermes/                         ← engine (off limits to agents)
 ├── argus-ui/                       ← dashboard (off limits to agents)
 └── Portfolio/                      ← YOUR project — WORK_DIR points here
 ```
 
-**Why a subdirectory?** Agents spawn with their working directory set to `WORK_DIR`. If `WORK_DIR` is the argus clone root itself, agents see `argus-ui/` and `hermes/` as existing code and may build into them. Pointing `WORK_DIR` at a fresh empty subfolder means agents build inside that subfolder only — nothing else can accidentally get touched.
+**Why a separate folder?** Agents are scoped to `WORK_DIR`. If `WORK_DIR` is the argus clone root, agents see `argus-ui/` and `hermes/` as existing code and may build into them. Pointing at a fresh folder means agents only touch your project.
 
-You can create additional project folders later (`argus/NextProject/`, `argus/Experiment/`, etc.) and switch `WORK_DIR` between them to work on different projects with the same argus install.
-
-#### Alternative: project folder anywhere on your disk
-
-If you'd rather keep your project completely separate from the argus clone (e.g. argus in `~/Desktop/argus/` and your project in `~/Documents/Portfolio/`), that's fully supported. Set `WORK_DIR` to wherever your project lives — Hermes will copy the three role-doc folders (`.claude/`, `.gemini/`, `.codex/`) into it on first boot if they're missing.
-
-If you want to do the copy yourself ahead of time:
-
-```bash
-cd argus
-cp -r .claude .gemini .codex /absolute/path/to/your-project/
-```
-
-Either way works. The subdirectory layout above is just the simplest default.
+**Project folder anywhere on disk works too.** Prefer keeping your project separate from the argus clone (e.g. argus in `~/Desktop/argus/`, your project in `~/Documents/Portfolio/`)? Set `WORK_DIR` to wherever your project lives — on first boot, Hermes copies the three role-doc folders (`.claude/`, `.gemini/`, `.codex/`) into it automatically.
 
 ### 4. Configure `hermes/.env`
 
@@ -175,11 +163,21 @@ WarZone-History/
 
 They regenerate on every run and contain run-specific content — not meant to be version-controlled alongside your project.
 
+---
+
+## Maintenance
+
+### Switching between projects
+
+You can keep multiple project folders and switch `WORK_DIR` between them to reuse the same argus install. Create additional folders wherever works for you — subdirectories of the argus clone (`argus/NextProject/`, `argus/Experiment/`, etc.) or anywhere else on disk.
+
+**To switch projects:** edit `hermes/.env` to point `WORK_DIR` at the new folder, then restart Hermes (`Ctrl+C` the running `npm run dev` and start it again). The new `WORK_DIR` takes effect on boot.
+
 ### Updating role docs after an argus pull
 
-The auto-copy from step 3 only runs when the role doc folders are **missing** in `WORK_DIR` — it never overwrites existing copies. That preserves any project-specific edits you made to your `.claude/CLAUDE.md`, `.gemini/GEMINI.md`, or `.codex/CODEX.md`.
+The auto-copy from step 3 only runs when the role-doc folders are **missing** in `WORK_DIR` — it never overwrites existing copies. That preserves any project-specific edits you made to your `.claude/CLAUDE.md`, `.gemini/GEMINI.md`, or `.codex/CODEX.md`.
 
-The trade-off: if you `git pull` in the argus clone and the role specs change, your project's copies stay on the older version. To pick up the new specs, delete your project's copies and restart hermes — fresh copies will be auto-installed:
+The trade-off: if you `git pull` in the argus clone and the role specs change, your project's copies stay on the older version. To pick up the new specs, delete your project's copies and restart Hermes — fresh copies will be auto-installed:
 
 ```bash
 rm -rf /path/to/your-project/{.claude,.gemini,.codex}
@@ -208,7 +206,8 @@ rm -rf /path/to/your-project/{.claude,.gemini,.codex}
 
 ## See also
 
+- **[CHANGELOG.md](CHANGELOG.md)** — version history and what's new since your last update
 - **[README.md](README.md)** — what Argus is, the three-agent pipeline, architecture, file signals, safety model
 - **[workflow.md](workflow.md)** — full end-to-end pipeline walkthrough with state tables
-- **[hermes/HERMES.md](hermes/HERMES.md)** — engine reference (folder structure, agents.json config, session-management matrix)
+- **[hermes/HERMES.md](hermes/HERMES.md)** — engine reference (folder structure, `.env` fields, `agents.json` config, Codex CLI quirks)
 - **[argus-ui/README.md](argus-ui/README.md)** — UI stack, scripts, section map, extension guide

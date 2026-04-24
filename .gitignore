@@ -33,9 +33,9 @@ hermes/hermes.db-shm
 
 # ─── Build output ─────────────────────────────────────────────
 argus-ui/dist/
-argus-ui/dist-ssr/
 argus-ui/.vite/
-.obsidian/
+*.tsbuildinfo
+coverage/
 
 # ─── Landing site (separate repo) ─────────────────────────────
 # The landing page is pushed to its own repository.

@@ -1,6 +1,6 @@
 {
   "name": "hermes",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Orchestration engine for Argus — runs the build, chat, and warzone agent servers",
   "scripts": {
     "chat": "node servers/chat.js",
