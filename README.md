@@ -1,10 +1,16 @@
 # Argus
 
+[![version](https://img.shields.io/badge/version-1.0.0-c4ff3d?style=flat-square)](CHANGELOG.md)
+
+![Argus v1.0 dashboard hero](Images/Argus-V1.png)
+
 **Argus** is a three-agent orchestration platform for software engineering. It coordinates **Claude** (planner), **Gemini** (builder), and **Codex** (auditor) through structured state machines with real-time visibility. The engine that drives it is called **Hermes**.
 
 The goal: turn raw LLM outputs into production-ready code by enforcing a planning step, a building step, and an independent audit — with a human review loop when the audit isn't clean.
 
-![Argus three-agent orchestration architecture](Images/architecture.webp)
+![Argus v1.0 — system architecture](Images/Full-Architecture.png)
+
+> **Requires your own Claude / Gemini / Codex CLI accounts.** Argus spawns each CLI in one-shot mode using your local authentication — it never bundles, proxies, or stores vendor credentials.
 
 > **→ Ready to install? See [SETUP.md](SETUP.md).**
 
@@ -14,9 +20,9 @@ The goal: turn raw LLM outputs into production-ready code by enforcing a plannin
 
 Each LLM is strong at something different. Rather than pick one and live with its weaknesses, Argus runs a pipeline where each agent does what it's best at:
 
-- **Claude plans** — picks a kebab-case slug for the task (e.g. `landing-page`) and turns the task into a concrete `<slug>-Plan.md` (files to touch, approach, gotchas, verification).
-- **Gemini builds** — implements the plan across the workspace, logging each iteration to `<slug>-Build-Log.md`.
-- **Codex audits** — reviews the implementation against the plan, grades it A / B / C / F in `<slug>-Build-Feedback.md`, and lists specific revision instructions on anything less than A.
+- **Claude plans** — picks a kebab-case slug for the task (e.g. `landing-page`) and turns the task into a concrete `<slug>-Plan.md` with **architecture** (stack + directory structure + cross-cutting concerns), files to touch, approach, gotchas, and **acceptance criteria** (independently verifiable assertions that define "done").
+- **Gemini builds** — implements the plan across the workspace, logging each iteration to `<slug>-Build-Log.md` with decision notes for any judgment calls or plan deviations.
+- **Codex audits** — runs a two-purpose audit: **plan compliance** (does the build match the plan's architecture + acceptance criteria + files?) AND **independent defect detection** across five categories (Security / Correctness / Resource / Interaction / Maintainability). Grades A / B / C / F in `<slug>-Build-Feedback.md`, with revision instructions for anything less than A.
 
 On a non-A grade, you approve in the UI and Gemini revises from the same plan using Codex's feedback. Plans are frozen across iterations — revisions are implementation fixes, not plan rewrites. When Codex gives an A, the task is done — and at that moment the three meta files move into `Build-History/<slug>/` so the live workspace always holds exactly one task's meta files. The `<slug>/` deliverable folder stays in place for you to continue iterating on.
 
@@ -58,7 +64,9 @@ See the full diagram at the top of this README, and [workflow.md](workflow.md) f
 ```
 argus/
 ├── Images/
-│   └── architecture.webp     Diagram used in this README
+│   ├── Argus-V1.png               Hero image (README)
+│   ├── Full-Architecture.png      Full system diagram (README)
+│   └── Pipeline-Architecture.png  Pipeline + file-signals walkthrough (workflow.md)
 │
 ├── argus-ui/                  React 19 + Vite + TailwindCSS 4
 │   ├── src/
@@ -71,7 +79,7 @@ argus/
 │   ├── core/                  NATS, agents, SQLite, file watcher, role-doc bootstrap
 │   ├── workflows/             XState machines (build, warzone)
 │   ├── servers/               Express + WebSocket servers (chat/build/warzone)
-│   ├── .env.example           Template — copy to hermes/.env and seed UUIDs
+│   ├── .env.example           Template — copy to hermes/.env and set WORK_DIR
 │   └── HERMES.md              Engine reference
 │
 ├── .claude/CLAUDE.md          Planner role specification
@@ -145,6 +153,7 @@ The watcher uses globs (`*-Plan.md`, `*-Build-Log.md`, `*-Build-Feedback.md`) at
 
 ## Docs
 
+- **[CHANGELOG.md](CHANGELOG.md)** — version history
 - **[SETUP.md](SETUP.md)** — install, configure, run, troubleshoot
 - **[workflow.md](workflow.md)** — full end-to-end pipeline walkthrough, state tables, file signal table
 - **[hermes/HERMES.md](hermes/HERMES.md)** — engine reference (folder structure, `.env` fields, `agents.json` config, Codex CLI quirks)
@@ -153,6 +162,8 @@ The watcher uses globs (`*-Plan.md`, `*-Build-Log.md`, `*-Build-Feedback.md`) at
 
 ---
 
-## License
+## Author
 
-Proprietary — Karinga.dev. All rights reserved.
+Built by **[Nagesh Goud](https://github.com/Nkaringa)** — [karinga.dev](https://karinga.dev).
+
+© 2026. All rights reserved.

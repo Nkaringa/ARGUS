@@ -1,24 +1,10 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# argus-ui workspace — see repo root .gitignore for shared rules.
+# Only workspace-unique rules live here.
 
-node_modules
-dist
-dist-ssr
+# Vite's local-override convention (e.g. `config.local.json`, `vite.config.local.ts`).
+# Kept scoped to this workspace so we don't accidentally ignore `*.local`
+# files elsewhere in the repo.
 *.local
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
+# Vim swap files (.swp, .swo, .swn).
 *.sw?

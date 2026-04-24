@@ -1,6 +1,6 @@
 # Hermes — Orchestration Engine
 
-**Version:** 0.3 (three-agent)
+**Version:** 1.0 (three-agent)
 **Part of:** Argus
 **Interface:** `http://localhost:5173` (Argus React UI via Vite)
 
@@ -52,7 +52,7 @@ hermes/
 │   ├── events.js           NATS pub/sub (connect, publish, subscribe)
 │   ├── agents.js           Agent runner (buildCommand, runAgent)
 │   ├── agents.json         Command templates for 7 agent keys (3 build + 3 warzone + 1 chat-specific Gemini)
-│   ├── archive.js          archiveLiveFiles (on task completion), archiveWarzoneFile, findLiveWarzoneSlug, listProjectFolders, listBuildHistory, listDiscussionHistory, readBuildHistory, readDiscussionHistory, parseTaskFile, parseWarzoneFile, isSafeSlug
+│   ├── archive.js          archiveLiveFiles (on task completion), archiveWarzoneFile, findLiveWarzoneSlug, listProjectFolders, listBuildHistory, listDiscussionHistory, listHistoryFolder, readBuildHistory, readDiscussionHistory, parseTaskFile, parseWarzoneFile, buildFileTree, isSafeSlug, isValidTaskSlug
 │   ├── auth.js             Shared-secret auth + CORS
 │   ├── db.js               SQLite (logEvent, createTask, completeTask, getHistory)
 │   └── watcher.js          File watcher (*-Plan.md, *-Build-Log.md, *-Build-Feedback.md, *-WarZone.md)
@@ -63,8 +63,12 @@ hermes/
 │
 ├── servers/                ← Express + WebSocket HTTP servers
 │   ├── chat.js             POST /chat
-│   ├── build.js            POST /task, /approval, /stop   GET /state, /history
-│   └── warzone.js          POST /discuss, /discuss/approval, /stop   GET /state, /warzone.md
+│   ├── build.js            POST /task · /approval · /stop
+│   │                       GET /state · /history · /projects · /files · /files/content
+│   │                       GET /history/builds · /history/builds/:slug
+│   └── warzone.js          POST /discuss · /discuss/approval · /warzone/new-discussion · /stop
+│                           GET /state · /warzone.md
+│                           GET /history/discussions · /history/discussions/:slug
 │
 ├── hermes.db               SQLite database (events + tasks tables) — git-ignored
 ├── .env                    WORK_DIR, ports, CHAT_DIR — git-ignored
@@ -193,25 +197,32 @@ The watcher uses glob patterns (`*-Plan.md`, `*-Build-Log.md`, `*-Build-Feedback
 
 | Topic | Published by | Consumed by |
 |---|---|---|
-| `agent.output` | agents.js stdout/stderr | build + warzone servers → UI |
-| `chat.output` | agents.js (chat server's runAgent) | chat server → UI |
-| `agent.started` | agents.js | build + warzone servers → UI |
+| `build.output` | agents.js stdout/stderr (build pipeline) | build server → UI |
+| `warzone.output` | agents.js stdout/stderr (warzone pipeline) | warzone server → UI |
+| `chat.output` | agents.js stdout/stderr (chat server) | chat server → UI |
+| `build.agent.started` | agents.js (build-pipeline invocations) | build server → UI |
+| `warzone.agent.started` | agents.js (warzone-pipeline invocations) | warzone server → UI |
 | `plan.completed` | watcher.js (`*-Plan.md`) | build workflow (extracts slug from `payload.file`) |
 | `agent.completed` | watcher.js (`*-Build-Log.md`) | build workflow |
-| `agent.failed` | workflow | build workflow |
 | `grade.received` | watcher.js (`*-Build-Feedback.md`) | build workflow |
 | `discuss.claude_done` | watcher.js (`*-WarZone.md`) | warzone workflow (extracts slug from `payload.file` on first round) |
 | `discuss.gemini_done` | watcher.js (`*-WarZone.md`) | warzone workflow |
 | `discuss.complete` | watcher.js (`*-WarZone.md`) | warzone workflow |
 
+
+
 ---
 
 ## Database (hermes.db)
 
-Two SQLite tables:
+SQLite, opened with **WAL journaling** (`journal_mode=WAL`, `synchronous=NORMAL`) so readers don't block writers during an active build.
 
-- **events** — every NATS event ever fired (full audit trail)
-- **tasks** — completed task records: description, grade, iterations, timestamps
+Two tables:
+
+- **events** — every event fired (full audit trail). Columns include `task_id` (keyed to `tasks.id`), `ts`, `topic`, `payload`. Indexed on `task_id`, `ts`, and `topic` — so you can query an entire iteration's event trace or pull a time-slice without a full scan.
+- **tasks** — completed task records: description, grade, iterations, timestamps, status (`RUNNING` / `DONE` / `STALE` / `ABORTED`). On hermes boot any `RUNNING` task left over from a prior crash is marked `STALE`.
+
+Everything Hermes publishes to NATS is also written to `events` via `logEvent()` — plus workflow-internal events like `agent.failed` that never hit NATS. So the events table is the complete trace; NATS is the live broadcast subset.
 
 ---
 
@@ -226,3 +237,13 @@ Two SQLite tables:
 | Stuck in `auditing` | `<slug>-Build-Feedback.md` missing `**Audit Grade:** [ABCF]` (case-sensitive, exact format). |
 | Warzone stuck at a phase | The current `<slug>-WarZone.md` is missing the expected status marker for that phase. |
 | Gemini writes to a `*-Build-Log.md` during chat | `CHAT_DIR` points at a directory containing `.gemini/`. Use `/tmp/argus-chat`. |
+
+---
+
+## See also
+
+- **[../CHANGELOG.md](../CHANGELOG.md)** — version history
+- **[../README.md](../README.md)** — product overview, architecture, file signals, safety model
+- **[../SETUP.md](../SETUP.md)** — install, configure, run, troubleshoot
+- **[../workflow.md](../workflow.md)** — end-to-end pipeline walkthrough with state tables
+- **[../argus-ui/README.md](../argus-ui/README.md)** — UI stack, scripts, section map

@@ -1,6 +1,6 @@
 {
   "name": "argus",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Argus — a three-agent orchestration platform for software engineering (Claude plans, Gemini builds, Codex audits).",
   "workspaces": [

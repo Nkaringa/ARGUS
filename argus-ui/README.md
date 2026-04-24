@@ -1,6 +1,6 @@
 # Argus UI
 
-The React control-panel for Argus. Talks to Hermes (the backend engine) over WebSockets for live state and HTTP for actions. Sections: **Chat** (Gemini / Claude / Codex), **Build**, **Warzone**, **Logs** (DB-driven task list), **Archive** (read-only viewer for past `Build-History/` and `WarZone-History/` artifacts).
+The React control-panel for Argus. Talks to Hermes (the backend engine) over WebSockets for live state and HTTP for actions. Sections: **Chat** (Gemini / Claude / Codex), **Build** (pipeline + workspace modes — toggle in the breadcrumbs), **Warzone**, **Logs** (DB-driven task list), **Archive** (read-only viewer for past `Build-History/` and `WarZone-History/` artifacts).
 
 ---
 
@@ -8,8 +8,8 @@ The React control-panel for Argus. Talks to Hermes (the backend engine) over Web
 
 - React 19 + TypeScript
 - Vite 8 (dev server + build)
-- TailwindCSS 4 (via `@theme` directive)
-- `react-markdown` + `remark-gfm` (used in Warzone review)
+- TailwindCSS 4 + custom `:root` CSS variables (no `@theme` directive)
+- `react-markdown` + `remark-gfm` (agent message rendering in Chat + Warzone)
 - Native WebSocket (no socket.io)
 
 ---
@@ -131,7 +131,7 @@ The Build view has two display modes toggled by `[▸ pipeline | ◧ workspace]`
 
 Above the task input, the Build tab shows a "Project" dropdown:
 - **New project** (default) — Claude picks the slug, Gemini creates `WORK_DIR/<slug>/` for deliverables.
-- **Continue: \<slug\>** — populated from `GET /projects` (lists `<slug>/` folders in WORK_DIR, excluding system folders). Hermes pre-sets `currentSlug`; planner prompt instructs Claude to use it verbatim. Drift safeguard: if Claude writes a different slug, the workflow aborts with a logged warning.
+- **Continue: \<slug\>** — populated from `GET /projects` (lists `<slug>/` folders in WORK_DIR, excluding system folders). The selected slug is pinned through the pipeline so continuations always write to the same folder.
 
 The list refreshes on tab focus and after every transition to `idle`/`done`.
 
@@ -161,19 +161,24 @@ The rail refreshes on mount and whenever the user revisits the tab. Slug params 
 
 | Var | Default | Purpose |
 |---|---|---|
-| `VITE_HOST` | `localhost` | Hermes host |
+| `VITE_HOST` | `localhost` | Hermes host (shared by all three servers unless a per-server `*_HOST` is set) |
 | `VITE_CHAT_PORT` | `3001` | Chat server port |
 | `VITE_BUILD_PORT` | `3002` | Build server port |
 | `VITE_WARZONE_PORT` | `3003` | Warzone server port |
-| `VITE_API_KEY` | *(empty)* | If set, sent as `X-Api-Key` on HTTP and `?key=` on WS. Leave empty for local dev (no auth). |
+| `VITE_CHAT_HOST` | `${VITE_HOST}:${VITE_CHAT_PORT}` | Production override for chat server — full host (e.g. Cloudflare tunnel subdomain, no port suffix) |
+| `VITE_BUILD_HOST` | `${VITE_HOST}:${VITE_BUILD_PORT}` | Production override for build server |
+| `VITE_WARZONE_HOST` | `${VITE_HOST}:${VITE_WARZONE_PORT}` | Production override for warzone server |
+| `VITE_API_KEY` | *(empty)* | If set, sent as `X-Api-Key` on HTTP and `?key=` on WS. Must match `API_KEY` in `hermes/.env`. Leave empty for local dev (no auth). |
 
-Set these in `argus-ui/.env.local` to override. Protocol (`http` / `https` / `ws` / `wss`) is auto-selected from `window.location.protocol`.
+Copy [`.env.local.example`](.env.local.example) to `argus-ui/.env.local` and uncomment any values you want to override. Protocol (`http` / `https` / `ws` / `wss`) is auto-selected from `window.location.protocol`.
 
 ---
 
 ## Design System
 
-The dashboard uses a dark terminal aesthetic — near-black canvas (`--bg #0c0c0d`), acid-lime accent (`--accent #c4ff3d`), JetBrains Mono for body / labels / logs, Space Grotesk for display headings, zero border-radius, 1px rules throughout. Drove by the HTML mockup at `landing/Mockup/argus-ui.html`.
+The dashboard uses a dark terminal aesthetic — near-black canvas (`--bg #0c0c0d`), acid-lime accent (`--accent #c4ff3d`), JetBrains Mono for body / labels / logs, Space Grotesk for display headings, zero border-radius, 1px rules throughout.
+
+**Brand.** The StatusBar wordmark is rendered as `ΛЯGUS` (Greek Λ for A, Cyrillic Я for R) — a visual treatment specific to the dashboard. The product name remains "Argus" everywhere else (docs, metadata, search). The wordmark carries `aria-label="argus"` so assistive tech reads the plain English name.
 
 Per-agent color coding for at-a-glance scanning:
 
@@ -183,7 +188,7 @@ Per-agent color coding for at-a-glance scanning:
 | Gemini | blue `#5b9cff` | `--gemini` |
 | Codex | purple `#b084ff` | `--codex` |
 
-All tokens live in `src/index.css` under `:root` — layout vars (`--sidebar-width`, `--statusbar-height`), palette, per-agent colors, fonts, and shared keyframes (`blink`, `pulse`, `ticker`, `caret`). The dashboard and the landing site now share the same terminal-native visual vocabulary.
+All tokens live in `src/index.css` under `:root` — layout vars (`--sidebar-width`, `--statusbar-height`), palette, per-agent colors, fonts, and shared keyframes (`blink`, `pulse`, `ticker`, `caret`).
 
 ---
 
@@ -198,6 +203,7 @@ All tokens live in `src/index.css` under `:root` — layout vars (`--sidebar-wid
 ## See Also
 
 - [../README.md](../README.md) — top-level project overview, architecture, file signals, safety model
+- [../CHANGELOG.md](../CHANGELOG.md) — version history
 - [../SETUP.md](../SETUP.md) — install, configure, run, troubleshoot
 - [../workflow.md](../workflow.md) — end-to-end pipeline walkthrough
 - [../hermes/HERMES.md](../hermes/HERMES.md) — engine reference

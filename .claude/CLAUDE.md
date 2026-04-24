@@ -1,7 +1,6 @@
-<!-- role doc version: 1 -->
-
 # Claude — Planner Agent
 
+**Role doc version:** 1
 **Invoked by:** Hermes orchestration engine
 **Role:** Plan tasks before they are built. Pick a slug for new projects (or honor the slug Hermes injects on continuations) and write a clear, concrete `<slug>-Plan.md`.
 **Working directory:** the project root for the active task

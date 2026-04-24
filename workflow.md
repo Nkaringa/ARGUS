@@ -1,6 +1,6 @@
 # Hermes Workflow
 
-**Version:** 0.3 (three-agent)
+**Version:** 1.0 (three-agent)
 **UI:** `http://localhost:5173` (Argus — React/Vite)
 
 ---
@@ -10,6 +10,8 @@
 Hermes is the backend engine for Argus. It runs three independent servers, each with its own pipeline and state machine. You interact through the Argus UI. Hermes handles all agent routing, state transitions, file watching, and persistence.
 
 The core abstraction is simple: **agents write to files, Hermes watches files, file writes advance state machines**.
+
+![Argus pipelines and file signals](Images/Pipeline-Architecture.png)
 
 ---
 
@@ -183,7 +185,7 @@ Claude goes first because framing the idea is a planning task. Gemini then propo
 | `<slug>-WarZone.md` | all three | append-only within a topic; Claude picks the slug | Three-phase discussion log for one topic |
 | `WarZone-History/<slug>/` | Hermes | created when user clicks **New Discussion** | Archive of past discussion topics |
 | `hermes/core/agents.json` | — | static config | Agent command templates + completion signals |
-| `hermes/.env` | — | static config | `WORK_DIR`, session IDs, ports |
+| `hermes/.env` | — | static config | `WORK_DIR`, ports, `CHAT_DIR` |
 | `hermes/hermes.db` | — | SQLite | Event stream + task history |
 
 Agents are forbidden from writing to files they don't own. Role docs enforce this.
@@ -199,7 +201,7 @@ NK-Base/
 ├── hermes/
 │   ├── core/                  shared infrastructure
 │   │   ├── agents.js          agent runner (buildCommand, runAgent)
-│   │   ├── agents.json        agent configs (6 entries: builder, planner, codex_auditor + 3 discuss variants)
+│   │   ├── agents.json        agent configs (7 entries: builder, planner, codex_auditor + 3 discuss variants + chat_builder)
 │   │   ├── archive.js         archiveLiveFiles (on task completion) + per-task + history list/read helpers + slug parsers
 │   │   ├── auth.js            shared-secret auth + CORS
 │   │   ├── db.js              SQLite (logEvent, createTask, completeTask, getHistory)
@@ -211,9 +213,13 @@ NK-Base/
 │   │   └── warzone.js         XState — warzone discussion
 │   │
 │   ├── servers/
-│   │   ├── build.js           POST /task, /approval, /stop  GET /state, /history
+│   │   ├── build.js           POST /task · /approval · /stop
+│   │   │                      GET /state · /history · /projects · /files · /files/content
+│   │   │                      GET /history/builds · /history/builds/:slug
 │   │   ├── chat.js            POST /chat
-│   │   └── warzone.js         POST /discuss, /discuss/approval, /stop  GET /state
+│   │   └── warzone.js         POST /discuss · /discuss/approval · /warzone/new-discussion · /stop
+│   │                          GET /state · /warzone.md
+│   │                          GET /history/discussions · /history/discussions/:slug
 │   │
 │   ├── hermes.db              SQLite
 │   ├── .env                   environment config
@@ -222,8 +228,6 @@ NK-Base/
 ├── .claude/CLAUDE.md          Planner role spec
 ├── .gemini/GEMINI.md          Builder role spec
 ├── .codex/CODEX.md            Auditor role spec
-│
-├── .archive/                  retired files from pre-three-agent era
 │
 ├── <slug>/                    deliverable folder per project (Gemini's HTML/CSS/JS/code)
 ├── <slug>-Plan.md             created at runtime (Claude; slug picked by Claude or fixed by UI)
@@ -240,9 +244,11 @@ NK-Base/
 
 | Topic | Published by | Consumed by |
 |---|---|---|
-| `agent.output` | agents.js (stdout/stderr) | build server + warzone server → UI |
-| `chat.output` | agents.js (chat mode) | chat server → UI |
-| `agent.started` | agents.js | build server → UI |
+| `build.output` | agents.js stdout/stderr (build pipeline) | build server → UI |
+| `warzone.output` | agents.js stdout/stderr (warzone pipeline) | warzone server → UI |
+| `chat.output` | agents.js stdout/stderr (chat server) | chat server → UI |
+| `build.agent.started` | agents.js (build-pipeline invocations) | build server → UI |
+| `warzone.agent.started` | agents.js (warzone-pipeline invocations) | warzone server → UI |
 | `plan.completed` | watcher.js (`*-Plan.md`) | build workflow (extracts slug from filename) |
 | `agent.completed` | watcher.js (`*-Build-Log.md`) | build workflow |
 | `grade.received` | watcher.js (`*-Build-Feedback.md`) | build workflow |
@@ -293,3 +299,13 @@ No session UUIDs, no `--resume`. Every call is a fresh one-shot CLI spawn. Conte
 | CLI auth error on agent spawn | Vendor auth expired | Re-authenticate the CLI directly (`claude`, `gemini`, or `codex` from your shell). Argus picks up the refresh on next invocation. |
 | Gemini writes to a `*-Build-Log.md` during chat | `CHAT_DIR` is a directory with `.gemini/` containing the build role doc | Point `CHAT_DIR` at `/tmp/argus-chat` (its own isolated `.gemini/GEMINI.md` gets written on boot) |
 | Grade never detected | `<slug>-Build-Feedback.md` pattern mismatch | Verify exact string `**Audit Grade:** A` (case-sensitive) |
+
+---
+
+## See also
+
+- **[CHANGELOG.md](CHANGELOG.md)** — version history
+- **[README.md](README.md)** — product overview, architecture, file signals, safety model
+- **[SETUP.md](SETUP.md)** — install, configure, run, troubleshoot
+- **[hermes/HERMES.md](hermes/HERMES.md)** — engine reference (folder structure, `.env` fields, `agents.json` config, Codex CLI quirks)
+- **[argus-ui/README.md](argus-ui/README.md)** — UI stack, scripts, section map
