@@ -7,7 +7,7 @@ COPY package*.json ./
 COPY hermes/package*.json ./hermes/
 COPY argus-ui/package*.json ./argus-ui/
 
-RUN npm install --omit=dev
+RUN npm install
 
 # ── Stage 2: runtime image ────────────────────────────────────────────────────
 FROM node:20-alpine
