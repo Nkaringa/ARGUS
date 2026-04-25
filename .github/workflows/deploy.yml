@@ -14,5 +14,5 @@ jobs:
         run: |
           cd ~/ARGUS
           git pull origin main
-          docker compose up -d --build hermes
-          docker compose ps
+          docker-compose up -d --build hermes
+          docker-compose ps
