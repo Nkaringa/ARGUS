@@ -45,6 +45,9 @@ landing/
 *.log
 npm-debug.log*
 
+# ─── Claude Code ──────────────────────────────────────────────
+.claude/worktrees/
+
 # ─── OS / editor ──────────────────────────────────────────────
 .DS_Store
 Thumbs.db
