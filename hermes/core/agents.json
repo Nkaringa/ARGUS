@@ -25,7 +25,7 @@
     "name": "Claude",
     "model": "claude",
     "role": "plan",
-    "command": "claude --allowedTools Edit Write Read Glob Grep -p \"{task}\" < /dev/null",
+    "command": "claude --allowedTools Edit Write Read Glob Grep WebFetch WebSearch -p \"{task}\" < /dev/null",
     "timeout": 240000,
     "completionSignal": {
       "type": "file_content",
@@ -66,7 +66,7 @@
     "name": "Claude",
     "model": "claude",
     "role": "discuss_plan",
-    "command": "claude --allowedTools Edit Write Read Glob Grep -p \"{task}\" < /dev/null",
+    "command": "claude --allowedTools Edit Write Read Glob Grep WebFetch WebSearch -p \"{task}\" < /dev/null",
     "timeout": 180000
   },
   "discuss_codex": {
