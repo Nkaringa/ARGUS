@@ -7,6 +7,13 @@ Argus uses product versioning — major/minor/patch bumps reflect user-facing sc
 
 ---
 
+## [Unreleased]
+
+### Changed
+- feat: extend allowed tools for Claude ([#19](https://github.com/Nkaringa/ARGUS/pull/19)) — @Nkaringa
+
+---
+
 ## [1.0.0] — 2026-04-23
 
 First named release. Baseline for all future entries.
