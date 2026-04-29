@@ -14,6 +14,7 @@ Argus uses product versioning — major/minor/patch bumps reflect user-facing sc
 
 ---
 - Refactor Hermes build pipeline to enhance scratch file handling and ownership ([#20](https://github.com/Nkaringa/ARGUS/pull/20)) — @Nkaringa
+- feat: implement auto-approve feature for build tasks with configurabl… ([#21](https://github.com/Nkaringa/ARGUS/pull/21)) — @Nkaringa
 ## [1.0.0] — 2026-04-23
 
 First named release. Baseline for all future entries.
