@@ -25,18 +25,15 @@ const WORK_DIR = (() => {
     }
 })();
 
-// Build pipeline files: <slug>-Plan.md, <slug>-Build-Log.md, <slug>-Build-Feedback.md.
+// Build pipeline files: <slug>-Plan.md only — the Build-Log.md and Build-Feedback.md
+// canonicals are now Hermes-owned and chmod 0o444 between iteration appends, so the
+// watcher has no role for them. Build/audit completion is driven directly by the workflow
+// from runAgent's resolve handler in workflows/build.js.
 // Warzone discussion file: <slug>-WarZone.md.
 // All globs are top-level only — Build-History/ and WarZone-History/ are excluded.
 const PLAN_GLOB           = path.join(WORK_DIR, '*-Plan.md');
-const BUILD_LOG_GLOB      = path.join(WORK_DIR, '*-Build-Log.md');
-const BUILD_FEEDBACK_GLOB = path.join(WORK_DIR, '*-Build-Feedback.md');
 const WARZONE_GLOB        = path.join(WORK_DIR, '*-WarZone.md');
 
-const ITERATION_PATTERN   = /^### Iteration/m;
-// Accept both `**Audit Grade:** A` and `**Audit Grade:** [A]` — auditors have written
-// both variants depending on how they interpret the prompt template.
-const GRADE_PATTERN       = /\*\*Audit Grade:\*\*\s*\[?([ABCF])\]?/;
 const PLAN_STATUS_PATTERN = /\*\*Plan Status:\*\*\s*READY/;
 
 const CLAUDE_PLAN_DONE_PATTERN  = /\*\*Planner Status:\*\*\s*DONE/;
@@ -88,11 +85,14 @@ function seedExistingFiles(matchPredicate) {
 function startWatcher(mode = 'build') {
     const filesToWatch = mode === 'warzone'
         ? [WARZONE_GLOB]
-        : [PLAN_GLOB, BUILD_LOG_GLOB, BUILD_FEEDBACK_GLOB];
+        : [PLAN_GLOB];
 
     seedExistingFiles(mode === 'warzone'
         ? (name) => parseWarzoneFile(name) !== null
-        : (name) => parseTaskFile(name) !== null);
+        : (name) => {
+            const parsed = parseTaskFile(name);
+            return parsed !== null && parsed.base === 'Plan.md';
+        });
 
     // Ignore high-churn subtrees. fsevents on macOS reports events for the ENTIRE
     // WORK_DIR subtree (not just our top-level glob), so when WORK_DIR is pointed at
@@ -112,40 +112,21 @@ function startWatcher(mode = 'build') {
     const handleBuildFile = (filePath) => {
         const filename = path.basename(filePath);
         const parsed = parseTaskFile(filename);
-        if (!parsed) return; // unexpected — glob matched something we don't parse
+        // Build-Log.md / Build-Feedback.md no longer drive state transitions — they are
+        // Hermes-owned canonicals appended under chmod control by the workflow's assemble
+        // step. Only Plan.md remains a watched file-signal.
+        if (!parsed || parsed.base !== 'Plan.md') return;
 
         const current = readFile(filePath);
         const previous = lastContent.get(filePath) || '';
         if (current === previous) return;
-
-        const delta = getNewContent(current, previous);
         lastContent.set(filePath, current);
 
-        if (parsed.base === 'Plan.md') {
-            // Planner overwrites their plan file. Content-change + pattern-match = ready.
-            // awaitWriteFinish coalesces multi-chunk writes, so single-fire is guaranteed.
-            if (PLAN_STATUS_PATTERN.test(current)) {
-                console.log(`[watcher] ${filename} — plan ready`);
-                publish('plan.completed', { file: filename });
-            }
-            return;
-        }
-
-        if (parsed.base === 'Build-Log.md') {
-            if (delta && ITERATION_PATTERN.test(delta)) {
-                console.log(`[watcher] ${filename} — new iteration appended`);
-                publish('agent.completed', { role: 'build', file: filename });
-            }
-            return;
-        }
-
-        if (parsed.base === 'Build-Feedback.md') {
-            if (!delta) return;
-            const match = delta.match(GRADE_PATTERN);
-            if (match) {
-                console.log(`[watcher] ${filename} — grade: ${match[1]}`);
-                publish('grade.received', { grade: match[1], file: filename });
-            }
+        // Planner overwrites their plan file. Content-change + pattern-match = ready.
+        // awaitWriteFinish coalesces multi-chunk writes, so single-fire is guaranteed.
+        if (PLAN_STATUS_PATTERN.test(current)) {
+            console.log(`[watcher] ${filename} — plan ready`);
+            publish('plan.completed', { file: filename });
         }
     };
 
@@ -195,7 +176,7 @@ function startWatcher(mode = 'build') {
 
     const watchLabel = mode === 'warzone'
         ? '*-WarZone.md'
-        : '*-Plan.md + *-Build-Log.md + *-Build-Feedback.md';
+        : '*-Plan.md';
     console.log(`[watcher:${mode}] Watching ${watchLabel}`);
     return watcher;
 }

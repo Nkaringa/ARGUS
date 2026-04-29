@@ -1,7 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const BASES = ['Plan.md', 'Build-Log.md', 'Build-Feedback.md'];
+// Includes the per-iteration scratch files (`<slug>-iter.md`, `<slug>-audit.md`). On the
+// happy path these are deleted by assembleAndAppend immediately after the canonical append;
+// they only persist if the workflow crashed mid-step or the agent wrote scratch but the
+// assemble path threw. Sweeping them into Build-History keeps a forensic trail rather than
+// silently abandoning them at the workspace root.
+const BASES = ['Plan.md', 'Build-Log.md', 'Build-Feedback.md', 'iter.md', 'audit.md'];
 const WARZONE_BASE = 'WarZone.md';
 
 // Parse a runtime task filename into its slug and base.
