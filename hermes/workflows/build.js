@@ -1,10 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const { createMachine, createActor } = require('xstate');
-const { subscribe } = require('../core/events');
+const { subscribe, publish } = require('../core/events');
 const { runAgent } = require('../core/agents');
 const { archiveLiveFiles, isValidTaskSlug } = require('../core/archive');
 const { logEvent, createTask, completeTask, getHistory } = require('../core/db');
+const { assembleAndAppend, lockCanonical, MetaFileError } = require('../core/meta-files');
+
+// Approval state has historically blocked indefinitely — if the user steps away after a B/C/F,
+// the pipeline waits forever. Configurable safety net so the state machine self-aborts and
+// archives the partial work instead of hanging. Default 30 minutes; override via env for ops.
+const APPROVAL_TIMEOUT_MS = Number(process.env.APPROVAL_TIMEOUT_MS) || 30 * 60 * 1000;
+const WORK_DIR = process.env.WORK_DIR;
 
 let currentTaskId = null;
 let currentTask = null;
@@ -77,6 +84,23 @@ Scope rules:
         });
 }
 
+// Best-effort cleanup of a stale scratch file from a prior aborted run. If a scratch with
+// the same name exists when we launch an agent, the agent might silently inherit it (no
+// write needed → assemble would attribute the prior agent's content to this iteration).
+// Loud failure: log if delete fails for any reason other than ENOENT, but don't halt — the
+// agent's own write will overwrite it on success path; on failure path, scratch validation
+// will surface whatever's there.
+function clearStaleScratch(scratchPath) {
+    try {
+        fs.unlinkSync(scratchPath);
+        console.log(`[workflow] Cleared stale scratch ${path.basename(scratchPath)}`);
+    } catch (err) {
+        if (err.code !== 'ENOENT') {
+            console.warn(`[workflow] Could not clear stale scratch ${scratchPath}: ${err.message}`);
+        }
+    }
+}
+
 function launchBuilder() {
     if (!currentTask) return;
     if (!currentSlug) {
@@ -88,32 +112,118 @@ function launchBuilder() {
         return;
     }
     iterationCount++;
-    logEvent('agent.started', { role: 'build', task: currentTask, iteration: iterationCount }, currentTaskId);
+    // Capture mutable workflow state at launch so the runAgent.then handler logs and assembles
+    // for the right task even if abort + new submit happens before the agent process exits.
+    const builderIteration = iterationCount;
+    const builderTaskId = currentTaskId;
+    const builderSlug = currentSlug;
+    logEvent('agent.started', { role: 'build', task: currentTask, iteration: builderIteration }, builderTaskId);
 
     const planFile     = `${currentSlug}-Plan.md`;
     const buildLogFile = `${currentSlug}-Build-Log.md`;
     const feedbackFile = `${currentSlug}-Build-Feedback.md`;
+    const scratchFile  = `${currentSlug}-iter.md`;
+    const canonicalPath = path.join(WORK_DIR, buildLogFile);
+    const scratchPath   = path.join(WORK_DIR, scratchFile);
 
-    const revisionNote = iterationCount > 1
-        ? ` This is revision ${iterationCount}. Read ${feedbackFile} — find the latest audit entry and fix every issue listed under "Instructions for Gemini". Do not re-do work that already passed.`
+    clearStaleScratch(scratchPath);
+    // Defensive lock — should already be locked from the prior assemble. New install or
+    // manual edit could leave it writable; lockCanonical is a no-op if file doesn't exist.
+    try { lockCanonical(canonicalPath); } catch (err) {
+        console.warn(`[workflow] Defensive lock of ${buildLogFile} failed: ${err.message}`);
+    }
+
+    const revisionNote = builderIteration > 1
+        ? ` This is revision ${builderIteration}. Read ${feedbackFile} — find the latest audit entry and fix every issue listed under "Instructions for Gemini". Do not re-do work that already passed.`
         : ` Read ${planFile} first — that is Claude's implementation plan. Follow it.`;
-    const logReminder = ` When done, append a new ### Iteration entry to ${buildLogFile} at the project root (required — the pipeline watches for it).`;
     const buildPrompt = `You are the BUILDER in the Argus build pipeline. Your current working directory is the project root for this task.
+
+This is iteration ${builderIteration}. When done, write your iteration entry as a single fresh markdown file at \`${scratchFile}\` (project root). Hermes will read it, inject the canonical iteration number and timestamp, and append it to \`${buildLogFile}\` for you.
+
+Scratch file shape — write exactly this structure:
+
+\`\`\`md
+## <short title for this iteration>
+- **Status:** COMPLETED
+- **Task:** <one sentence describing what was asked>
+- **Files Created/Modified:**
+  - \`${currentSlug}/path/to/file\` — <what changed>
+- **Audit Grade:** [Pending]
+- **Notes:** <judgment calls + plan deviations — required, see role doc>
+\`\`\`
+
+DO NOT include a \`### Iteration N\` heading or a \`**Timestamp:**\` line — Hermes injects both. DO NOT write to or modify \`${buildLogFile}\` — Hermes owns that file and the OS will reject your write with EACCES.
 
 All deliverables go inside \`${currentSlug}/\` — create the folder if it doesn't exist (mkdir -p ${currentSlug}/) and treat it as your project root for this task. Existing files in \`${currentSlug}/\` (from prior iterations or continuations) are part of the project — read and modify them as needed.
 
 Scope rules (strict):
 - Deliverables (HTML, CSS, JS, code of any kind) live ONLY inside \`${currentSlug}/\`. Do NOT write deliverable files at the project root.
-- Meta files at the project root (\`${planFile}\`, \`${buildLogFile}\`, \`${feedbackFile}\`) are owned by Claude / you / Codex respectively. You ONLY write to \`${buildLogFile}\` and only by appending a new \`### Iteration\` entry.
+- Meta files at the project root: \`${planFile}\` (Claude's plan, read-only for you), \`${buildLogFile}\` (Hermes-owned, EACCES on write), \`${feedbackFile}\` (Hermes-owned, EACCES on write). You write only to \`${scratchFile}\`.
 - Do NOT modify anything outside the project root — hermes/, argus-ui/, landing/, any role-doc folder (.claude/, .gemini/, .codex/), Build-History/, and anything in a parent or sibling directory are argus's own codebase and are off-limits.
 - If ${planFile} mentions a path outside \`${currentSlug}/\`, ignore it — scope was misplanned; build only inside \`${currentSlug}/\`.
 
-Task: ${currentTask}${revisionNote}${logReminder}`;
+Task: ${currentTask}${revisionNote}`;
 
-    runAgent('builder', buildPrompt, { outputTopic: 'build.output', pipeline: 'build', taskId: currentTaskId })
+    runAgent('builder', buildPrompt, { outputTopic: 'build.output', pipeline: 'build', taskId: builderTaskId })
+        .then(() => {
+            // Drop the result if state has moved on (user aborted mid-build, or a new task
+            // was submitted before the agent process exited). Without this guard, the agent's
+            // late scratch would get appended to a canonical that no longer represents the
+            // active task. The orphan scratch will be swept by the archival pass.
+            const liveState = service.getSnapshot().value;
+            if (liveState !== 'building' || currentTaskId !== builderTaskId) {
+                console.log(`[workflow] Builder finished after state moved (state=${liveState}, task=${builderTaskId}→${currentTaskId}) — discarding result`);
+                logEvent('agent.completed_after_abort', {
+                    role: 'build', state: liveState, captured_task: builderTaskId,
+                }, builderTaskId);
+                return;
+            }
+            // Process exited cleanly — now read scratch, validate, and assemble into canonical.
+            // The agent honoring its contract is an assertion, not a fact: missing/malformed
+            // scratch is a hard BUILD_FAILED (named reason in details for UI surfacing).
+            try {
+                const result = assembleAndAppend({
+                    canonicalPath,
+                    scratchPath,
+                    slug: builderSlug,
+                    iterationNumber: builderIteration,
+                    role: 'build',
+                    kind: 'Build Log',
+                });
+                logEvent('agent.completed', {
+                    role: 'build',
+                    iteration: result.iteration,
+                    title: result.title,
+                    bytes_appended: result.bytesAppended,
+                    post_size: result.postSize,
+                }, builderTaskId);
+                publish('build.agent.completed', {
+                    role: 'build', iteration: result.iteration, title: result.title,
+                });
+                service.send({ type: 'BUILD_DONE' });
+            } catch (err) {
+                if (err instanceof MetaFileError) {
+                    console.error(`[workflow] Build assemble failed: ${err.reason}`, err.details);
+                    logEvent('agent.failed', {
+                        role: 'build', reason: err.reason, details: err.details,
+                    }, builderTaskId);
+                } else {
+                    console.error('[workflow] Build assemble unexpected:', err.message);
+                    logEvent('agent.failed', { role: 'build', error: err.message }, builderTaskId);
+                }
+                service.send({ type: 'BUILD_FAILED' });
+            }
+        })
         .catch((err) => {
-            console.error('[workflow] Build failed:', err.message);
-            logEvent('agent.failed', { role: 'build', error: err.message }, currentTaskId);
+            // Same guard for the failure path — a stale agent process that errors out should
+            // not flip BUILD_FAILED on a task that's already moved on.
+            const liveState = service.getSnapshot().value;
+            if (liveState !== 'building' || currentTaskId !== builderTaskId) {
+                console.log(`[workflow] Builder errored after state moved — discarding`);
+                return;
+            }
+            console.error('[workflow] Build process failed:', err.message);
+            logEvent('agent.failed', { role: 'build', error: err.message }, builderTaskId);
             service.send({ type: 'BUILD_FAILED' });
         });
 }
@@ -125,25 +235,114 @@ function launchAuditor() {
         service.send({ type: 'AUDIT_FAILED' });
         return;
     }
-    logEvent('agent.started', { role: 'audit' }, currentTaskId);
+    const auditIteration = iterationCount;
+    const auditTaskId = currentTaskId;
+    const auditSlug = currentSlug;
+    logEvent('agent.started', { role: 'audit', iteration: auditIteration }, auditTaskId);
 
     const planFile     = `${currentSlug}-Plan.md`;
     const buildLogFile = `${currentSlug}-Build-Log.md`;
     const feedbackFile = `${currentSlug}-Build-Feedback.md`;
+    const scratchFile  = `${currentSlug}-audit.md`;
+    const canonicalPath = path.join(WORK_DIR, feedbackFile);
+    const scratchPath   = path.join(WORK_DIR, scratchFile);
 
-    const auditPrompt = `You are the AUDITOR in the Argus build pipeline. Read .codex/CODEX.md for your role spec. Read ${planFile} (what should have been built) and ${buildLogFile} (what Gemini reports was built — find the latest ### Iteration entry). The deliverables live inside \`${currentSlug}/\` — read and verify the files Gemini lists under "Files Created/Modified" from there.
+    clearStaleScratch(scratchPath);
+    try { lockCanonical(canonicalPath); } catch (err) {
+        console.warn(`[workflow] Defensive lock of ${feedbackFile} failed: ${err.message}`);
+    }
 
-Append your audit to ${feedbackFile} (at the project root) with a new ### Iteration entry and the exact line \`**Audit Grade:** <LETTER>\` where \`<LETTER>\` is one of A, B, C, or F (no brackets, just the letter). For example: \`**Audit Grade:** A\`.
+    const auditPrompt = `You are the AUDITOR in the Argus build pipeline. Read .codex/CODEX.md for your role spec. Read ${planFile} (what should have been built) and ${buildLogFile} (what was built — find the latest \`### Iteration\` entry). The deliverables live inside \`${currentSlug}/\` — read and verify the files Gemini listed under "Files Created/Modified" from there.
+
+This is iteration ${auditIteration}. When done, write your audit as a single fresh markdown file at \`${scratchFile}\` (project root). Hermes will read it, inject the canonical iteration number and timestamp, and append it to \`${feedbackFile}\` for you.
+
+Scratch file shape — write exactly this structure:
+
+\`\`\`md
+## <short audit title>
+- **Audit Grade:** A
+- **Auditor:** Codex
+- **Status:** [COMPLETE | REVISION NEEDED | REDO]
+
+#### Files Reviewed
+- \`${currentSlug}/path/to/file\`
+
+#### Plan Compliance
+... (see CODEX.md for the full required structure)
+
+#### Independent Findings
+...
+
+#### Instructions for Gemini
+...
+\`\`\`
+
+The \`**Audit Grade:** <LETTER>\` line is required — Hermes parses it for state-machine routing. Use exactly one of A, B, C, or F (no brackets, just the letter).
+
+DO NOT include a \`### Iteration N\` heading or a \`**Date:**\` / \`**Timestamp:**\` line — Hermes injects both. DO NOT write to or modify \`${feedbackFile}\` — Hermes owns that file and the OS will reject your write with EACCES.
 
 Scope rules:
 - Read deliverable files only from \`${currentSlug}/\`. Read meta files (${planFile}, ${buildLogFile}) from the project root.
-- Write ONLY to ${feedbackFile}.
+- Write ONLY to \`${scratchFile}\`.
 - Do NOT modify any other file. Do NOT read or reference anything outside the project root (hermes/, argus-ui/, landing/, role-doc folders, or any parent/sibling directory are argus's own codebase, not the audit target).
 - Do NOT read or write anything inside Build-History/.`;
-    runAgent('codex_auditor', auditPrompt, { outputTopic: 'build.output', pipeline: 'build', taskId: currentTaskId })
+
+    runAgent('codex_auditor', auditPrompt, { outputTopic: 'build.output', pipeline: 'build', taskId: auditTaskId })
+        .then(() => {
+            const liveState = service.getSnapshot().value;
+            if (liveState !== 'auditing' || currentTaskId !== auditTaskId) {
+                console.log(`[workflow] Auditor finished after state moved (state=${liveState}, task=${auditTaskId}→${currentTaskId}) — discarding result`);
+                logEvent('agent.completed_after_abort', {
+                    role: 'audit', state: liveState, captured_task: auditTaskId,
+                }, auditTaskId);
+                return;
+            }
+            try {
+                const result = assembleAndAppend({
+                    canonicalPath,
+                    scratchPath,
+                    slug: auditSlug,
+                    iterationNumber: auditIteration,
+                    role: 'audit',
+                    kind: 'Build Feedback',
+                });
+                lastGrade = result.grade;
+                logEvent('grade.received', {
+                    grade: result.grade,
+                    iteration: result.iteration,
+                    title: result.title,
+                    bytes_appended: result.bytesAppended,
+                }, auditTaskId);
+                publish('grade.received', {
+                    grade: result.grade, iteration: result.iteration, file: feedbackFile,
+                });
+                if (result.grade === 'A') {
+                    service.send({ type: 'GRADE_A' });
+                } else {
+                    if (auditTaskId) completeTask(auditTaskId, iterationCount, result.grade, 'REVISION');
+                    service.send({ type: 'GRADE_BCF' });
+                }
+            } catch (err) {
+                if (err instanceof MetaFileError) {
+                    console.error(`[workflow] Audit assemble failed: ${err.reason}`, err.details);
+                    logEvent('agent.failed', {
+                        role: 'audit', reason: err.reason, details: err.details,
+                    }, auditTaskId);
+                } else {
+                    console.error('[workflow] Audit assemble unexpected:', err.message);
+                    logEvent('agent.failed', { role: 'audit', error: err.message }, auditTaskId);
+                }
+                service.send({ type: 'AUDIT_FAILED' });
+            }
+        })
         .catch((err) => {
-            console.error('[workflow] Audit failed:', err.message);
-            logEvent('agent.failed', { role: 'audit', error: err.message }, currentTaskId);
+            const liveState = service.getSnapshot().value;
+            if (liveState !== 'auditing' || currentTaskId !== auditTaskId) {
+                console.log(`[workflow] Auditor errored after state moved — discarding`);
+                return;
+            }
+            console.error('[workflow] Audit process failed:', err.message);
+            logEvent('agent.failed', { role: 'audit', error: err.message }, auditTaskId);
             service.send({ type: 'AUDIT_FAILED' });
         });
 }
@@ -195,6 +394,14 @@ const hermesMachine = createMachine({
             },
         },
         awaiting_approval: {
+            entry: 'onApprovalEntry',
+            // Self-abort if the user never returns. Without this guard, the pipeline can sit
+            // in awaiting_approval forever — leaving the slug occupied, the meta files in
+            // place, and any reconnecting UI stuck on a half-completed task. APPROVAL_TIMEOUT_MS
+            // is configurable via env. Auto-abort takes the same archival path as a manual abort.
+            after: {
+                [APPROVAL_TIMEOUT_MS]: { target: 'idle', actions: 'onApprovalTimeout' },
+            },
             on: {
                 APPROVE: 'building',
                 SKIP:    'done',
@@ -242,6 +449,26 @@ service = createActor(hermesMachine.provide({
             iterationCount = 0;
             retryCount = 0;
             lastGrade = null;
+        },
+        onApprovalEntry: () => {
+            console.log(`[workflow] Awaiting approval (timeout in ${Math.round(APPROVAL_TIMEOUT_MS / 60000)} min)`);
+            logEvent('approval_timer_armed', {
+                deadline_ms: APPROVAL_TIMEOUT_MS, grade: lastGrade,
+            }, currentTaskId);
+        },
+        onApprovalTimeout: () => {
+            console.warn(`[workflow] Approval timeout fired after ${Math.round(APPROVAL_TIMEOUT_MS / 60000)} min — auto-aborting`);
+            if (currentTaskId) {
+                completeTask(currentTaskId, iterationCount, lastGrade, 'CANCELLED');
+                logEvent('task.aborted', {
+                    taskId: currentTaskId, reason: 'approval_timeout',
+                    timeout_ms: APPROVAL_TIMEOUT_MS,
+                }, currentTaskId);
+                if (broadcastFn) broadcastFn({ type: 'history', items: getHistory() });
+            }
+            archiveLiveFiles();
+            currentTask = null;
+            currentTaskId = null;
         },
     },
     guards: {
@@ -319,33 +546,10 @@ function startWorkflow() {
         service.send({ type: 'PLAN_DONE' });
     });
 
-    subscribe('agent.completed', (payload) => {
-        if (payload.role !== 'build') return;
-        // Correlate the event to the active task. Without these guards, an ambient
-        // write to a stale or wrong-slug *-Build-Log.md advances the state machine.
-        if (service.getSnapshot().value !== 'building') return;
-        if (!currentSlug || payload.file !== `${currentSlug}-Build-Log.md`) {
-            console.warn(`[workflow] Ignoring agent.completed for unrelated file: ${payload.file}`);
-            return;
-        }
-        service.send({ type: 'BUILD_DONE' });
-    });
-
-    subscribe('grade.received', (payload) => {
-        if (service.getSnapshot().value !== 'auditing') return;
-        if (!currentSlug || payload.file !== `${currentSlug}-Build-Feedback.md`) {
-            console.warn(`[workflow] Ignoring grade.received for unrelated file: ${payload.file}`);
-            return;
-        }
-        logEvent('grade.received', payload, currentTaskId);
-        lastGrade = payload.grade;
-        if (payload.grade === 'A') {
-            service.send({ type: 'GRADE_A' });
-        } else {
-            if (currentTaskId) completeTask(currentTaskId, iterationCount, payload.grade, 'REVISION');
-            service.send({ type: 'GRADE_BCF' });
-        }
-    });
+    // Build/audit completion no longer comes from the watcher — the workflow drives the
+    // state machine directly from its own runAgent.then handler after assembleAndAppend
+    // succeeds (loud failure on missing/malformed scratch). The watcher only retains
+    // *-Plan.md (planner is still file-signal-driven; Plan.md is small + atomic).
 
     console.log('[workflow] State machine started');
 }
