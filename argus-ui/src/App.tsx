@@ -78,6 +78,8 @@ export default function App() {
               iteration={build.iteration}
               grade={build.grade}
               slug={build.slug}
+              autoApprove={build.autoApprove}
+              autoApproveCap={build.autoApproveCap}
               stageStartedAt={build.stageStartedAt}
               lines={build.lines}
               droppedLineCount={build.droppedLineCount}

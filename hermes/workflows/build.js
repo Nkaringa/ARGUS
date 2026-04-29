@@ -24,6 +24,12 @@ let retryCount = 0;
 let iterationCount = 0;
 let lastGrade = null;
 let broadcastFn = null;
+// Auto-approve loop state. When `autoApprove` is true, the awaiting_approval entry
+// action self-sends APPROVE while iterationCount < autoApproveCap. Both reset in onIdle.
+// Server-side clamps autoApproveCap to [1, 20] before reaching submitTask; this is the
+// last-mile defensive default so an internal caller can't bypass the bound.
+let autoApprove = false;
+let autoApproveCap = 10;
 
 function setBroadcast(fn) {
     broadcastFn = fn;
@@ -449,12 +455,47 @@ service = createActor(hermesMachine.provide({
             iterationCount = 0;
             retryCount = 0;
             lastGrade = null;
+            autoApprove = false;
+            autoApproveCap = 10;
         },
         onApprovalEntry: () => {
             console.log(`[workflow] Awaiting approval (timeout in ${Math.round(APPROVAL_TIMEOUT_MS / 60000)} min)`);
             logEvent('approval_timer_armed', {
                 deadline_ms: APPROVAL_TIMEOUT_MS, grade: lastGrade,
             }, currentTaskId);
+
+            if (!autoApprove) return;
+
+            if (iterationCount < autoApproveCap) {
+                // Within cap — self-approve. Defer one tick so the state-machine entry
+                // settles before we send the next event; sending APPROVE inside the entry
+                // handler synchronously would race with XState's own transition setup.
+                console.log(`[workflow] Auto-approving iteration ${iterationCount} (cap ${autoApproveCap}, last grade ${lastGrade})`);
+                logEvent('auto_approve_armed', {
+                    iteration: iterationCount,
+                    cap: autoApproveCap,
+                    grade: lastGrade,
+                }, currentTaskId);
+                setImmediate(() => {
+                    // Re-check state — abort or timeout could have moved us between the
+                    // entry handler and this tick. Only fire APPROVE if still in awaiting.
+                    if (service.getSnapshot().value === 'awaiting_approval') {
+                        service.send({ type: 'APPROVE' });
+                    }
+                });
+                return;
+            }
+
+            // Cap reached — disable auto-mode and let the existing approval flow take over.
+            // Setting autoApprove=false ensures that if the user manually approves and the
+            // state re-enters awaiting_approval later, the loop does not silently re-engage.
+            console.warn(`[workflow] Auto-approve cap reached (${autoApproveCap} iterations) — releasing to user`);
+            logEvent('auto_approve_cap_reached', {
+                iteration: iterationCount,
+                cap: autoApproveCap,
+                grade: lastGrade,
+            }, currentTaskId);
+            autoApprove = false;
         },
         onApprovalTimeout: () => {
             console.warn(`[workflow] Approval timeout fired after ${Math.round(APPROVAL_TIMEOUT_MS / 60000)} min — auto-aborting`);
@@ -573,6 +614,21 @@ function submitTask(description, opts = {}) {
             throw new Error(`project folder not found: ${slug}`);
         }
     }
+    // Auto-approve opts. Server route validates and clamps; this is a defensive re-clamp
+    // so an internal caller (importing submitTask directly) can't bypass [1, 20] bounds.
+    autoApprove = opts.autoApprove === true;
+    if (autoApprove) {
+        const reqCap = Number(opts.autoApproveCap);
+        if (!Number.isFinite(reqCap) || reqCap < 1) {
+            autoApproveCap = 10;
+        } else if (reqCap > 20) {
+            autoApproveCap = 20;
+        } else {
+            autoApproveCap = Math.floor(reqCap);
+        }
+    } else {
+        autoApproveCap = 10;
+    }
     // Safety-net archival. The primary archive triggers are onDone and abort, which run
     // when the task actually finishes. This call covers the edge case of hermes crashing
     // mid-task (or a manual restart) — stale meta files at WORK_DIR root get archived
@@ -583,7 +639,11 @@ function submitTask(description, opts = {}) {
     currentSlug = mode === 'continue' ? slug : null;
     iterationCount = 0;
     currentTaskId = createTask(description);
-    logEvent('task.submitted', { description, mode, slug: currentSlug }, currentTaskId);
+    logEvent('task.submitted', {
+        description, mode, slug: currentSlug,
+        auto_approve: autoApprove,
+        auto_approve_cap: autoApproveCap,
+    }, currentTaskId);
     service.send({ type: 'TASK_SUBMITTED' });
 }
 
@@ -621,6 +681,8 @@ function getState() {
         // running and what grade was returned.
         slug: currentSlug,
         grade: lastGrade,
+        autoApprove,
+        autoApproveCap,
     };
 }
 

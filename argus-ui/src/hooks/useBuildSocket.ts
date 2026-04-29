@@ -5,6 +5,8 @@ import type { BuildState, OutputLine, HistoryItem } from '../types';
 export interface SubmitOpts {
   mode: 'new' | 'continue';
   slug?: string;
+  autoApprove?: boolean;
+  autoApproveCap?: number;
 }
 
 // Cap the in-memory log buffer client-side. The line splitter on the backend now publishes
@@ -19,6 +21,8 @@ export function useBuildSocket() {
   const [iteration, setIteration] = useState(0);
   const [grade, setGrade] = useState<string | undefined>(undefined);
   const [slug, setSlug] = useState<string | null>(null);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [autoApproveCap, setAutoApproveCap] = useState(10);
   const [lines, setLines] = useState<OutputLine[]>([]);
   const [droppedLineCount, setDroppedLineCount] = useState(0);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -55,6 +59,8 @@ export function useBuildSocket() {
         if (msg.iteration !== undefined) setIteration(msg.iteration);
         if (msg.grade !== undefined) setGrade(msg.grade);
         if (msg.slug !== undefined) setSlug(msg.slug);
+        if (msg.autoApprove !== undefined) setAutoApprove(msg.autoApprove);
+        if (msg.autoApproveCap !== undefined) setAutoApproveCap(msg.autoApproveCap);
       }
 
       if (msg.type === 'output') {
@@ -126,6 +132,12 @@ export function useBuildSocket() {
       body.mode = 'continue';
       body.slug = opts.slug;
     }
+    if (opts?.autoApprove) {
+      body.autoApprove = true;
+      if (typeof opts.autoApproveCap === 'number' && opts.autoApproveCap > 0) {
+        body.autoApproveCap = opts.autoApproveCap;
+      }
+    }
     const res = await fetch(`${SERVERS.build.http}/task`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -165,5 +177,5 @@ export function useBuildSocket() {
     setDroppedLineCount(0);
   }, []);
 
-  return { state, task, iteration, grade, slug, stageStartedAt, lines, droppedLineCount, history, projects, submitTask, sendApproval, stop };
+  return { state, task, iteration, grade, slug, autoApprove, autoApproveCap, stageStartedAt, lines, droppedLineCount, history, projects, submitTask, sendApproval, stop };
 }

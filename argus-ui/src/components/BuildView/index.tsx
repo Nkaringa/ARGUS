@@ -12,11 +12,13 @@ interface BuildViewProps {
   iteration: number;
   grade?: string;
   slug: string | null;
+  autoApprove: boolean;
+  autoApproveCap: number;
   stageStartedAt: number;
   lines: OutputLine[];
   droppedLineCount: number;
   projects: string[];
-  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string }) => void;
+  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string; autoApprove?: boolean; autoApproveCap?: number }) => void;
   onApprove: () => void;
   onSkip: () => void;
   onRetry: () => void;
@@ -497,6 +499,8 @@ function ActiveStage({
   iteration,
   grade,
   stageStartedAt,
+  autoApprove,
+  autoApproveCap,
   onApprove,
   onSkip,
   onRetry,
@@ -506,6 +510,8 @@ function ActiveStage({
   iteration: number;
   grade?: string;
   stageStartedAt: number;
+  autoApprove: boolean;
+  autoApproveCap: number;
   onApprove: () => void;
   onSkip: () => void;
   onRetry: () => void;
@@ -519,9 +525,62 @@ function ActiveStage({
   }, [state]);
 
   if (state === 'awaiting_approval') {
+    // Two display modes for awaiting_approval:
+    // - Auto-mode is engaged AND we haven't hit the cap yet → "auto-approving" panel
+    // - Auto-mode is off (either never enabled, or disabled by cap-hit) → standard
+    //   decision UI. If cap-hit caused the disable, show the release notice.
+    const inAutoLoop = autoApprove && iteration < autoApproveCap;
+    const capReleased = !autoApprove && autoApproveCap > 0 && iteration >= autoApproveCap;
+
+    if (inAutoLoop) {
+      return (
+        <Panel
+          headLabel="auto-approving"
+          headRight={`iter ${iteration} of ${autoApproveCap} · codex flagged ${grade ?? '?'}`}
+        >
+          <div style={{ padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+              <span
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 64,
+                  fontWeight: 500,
+                  lineHeight: 0.8,
+                  letterSpacing: '-0.06em',
+                  color: grade === 'F' ? 'var(--warn)' : grade === 'A' ? 'var(--accent)' : 'var(--ink)',
+                }}
+              >
+                {grade ?? '—'}
+              </span>
+              <div style={{ fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.5, maxWidth: '52ch' }}>
+                auto-approving revision {iteration} of {autoApproveCap}. abort any time if this isn't going where you want.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 14, paddingTop: 8, borderTop: '1px dashed var(--rule)' }}>
+              <ActionButton warn onClick={onAbort}>abort</ActionButton>
+            </div>
+          </div>
+        </Panel>
+      );
+    }
+
     return (
       <Panel headLabel="decision required" headRight={`iteration ${iteration} · codex flagged ${grade ?? '?'}`}>
         <div style={{ padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {capReleased && (
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--warn)',
+                padding: '6px 10px',
+                border: '1px dashed var(--warn)',
+              }}
+            >
+              auto-mode released — reached iteration {autoApproveCap} cap
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
             <span
               style={{
@@ -803,10 +862,14 @@ function TaskInputPanel({
 }: {
   state: BuildState;
   projects: string[];
-  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string }) => void;
+  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string; autoApprove?: boolean; autoApproveCap?: number }) => void;
 }) {
   const [input, setInput] = useState('');
   const [projectSel, setProjectSel] = useState<string>('new');
+  const [autoOn, setAutoOn] = useState(false);
+  // Empty string means "use the server default of 10". Stored as string to allow
+  // the user to clear the field; parsed to int only at submit time.
+  const [capInput, setCapInput] = useState<string>('');
   const effectiveSel = projectSel !== 'new' && !projects.includes(projectSel) ? 'new' : projectSel;
   const continueSlug = effectiveSel === 'new' ? null : effectiveSel;
   const disabled = state !== 'idle' && state !== 'done';
@@ -814,8 +877,16 @@ function TaskInputPanel({
   const handleSubmit = () => {
     const text = input.trim();
     if (!text || disabled) return;
-    if (continueSlug) onSubmit(text, { mode: 'continue', slug: continueSlug });
-    else onSubmit(text);
+    const opts: { mode: 'new' | 'continue'; slug?: string; autoApprove?: boolean; autoApproveCap?: number } =
+      continueSlug ? { mode: 'continue', slug: continueSlug } : { mode: 'new' };
+    if (autoOn) {
+      opts.autoApprove = true;
+      const parsed = parseInt(capInput.trim(), 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        opts.autoApproveCap = parsed;
+      }
+    }
+    onSubmit(text, opts);
     setInput('');
   };
 
@@ -860,6 +931,63 @@ function TaskInputPanel({
               </option>
             ))}
           </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <label
+            htmlFor="auto-toggle"
+            style={{
+              fontSize: 10,
+              letterSpacing: '0.14em',
+              color: 'var(--ink-dimmer)',
+              textTransform: 'uppercase',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <input
+              id="auto-toggle"
+              type="checkbox"
+              checked={autoOn}
+              onChange={(e) => setAutoOn(e.target.checked)}
+              disabled={disabled}
+            />
+            auto-approve revisions
+          </label>
+          {autoOn && (
+            <>
+              <label
+                htmlFor="auto-cap"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: '0.14em',
+                  color: 'var(--ink-dimmer)',
+                  textTransform: 'uppercase',
+                }}
+              >
+                max iterations
+              </label>
+              <input
+                id="auto-cap"
+                type="number"
+                min={1}
+                max={20}
+                placeholder="10"
+                value={capInput}
+                onChange={(e) => setCapInput(e.target.value)}
+                disabled={disabled}
+                style={{
+                  width: 60,
+                  fontSize: 12,
+                  color: 'var(--ink)',
+                  background: 'var(--bg-3)',
+                  padding: '6px 10px',
+                  border: '1px solid var(--rule)',
+                }}
+              />
+            </>
+          )}
         </div>
         <div
           style={{
@@ -1057,6 +1185,8 @@ export function BuildView({
   iteration,
   grade,
   slug,
+  autoApprove,
+  autoApproveCap,
   stageStartedAt,
   lines,
   droppedLineCount,
@@ -1141,6 +1271,8 @@ export function BuildView({
           iteration={iteration}
           grade={grade}
           stageStartedAt={stageStartedAt}
+          autoApprove={autoApprove}
+          autoApproveCap={autoApproveCap}
           onApprove={onApprove}
           onSkip={onSkip}
           onRetry={onRetry}
