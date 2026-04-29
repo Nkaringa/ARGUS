@@ -9,7 +9,7 @@ const fs = require('fs');
 const { connectNATS, subscribe } = require('../core/events');
 const { startWatcher } = require('../core/watcher');
 const { startWorkflow, submitTask, sendApproval, getState, setBroadcast } = require('../workflows/build');
-const { getHistory, sweepStaleRunningTasks } = require('../core/db');
+const { getHistory, sweepStaleRunningTasks, logEvent } = require('../core/db');
 const { corsMiddleware, authMiddleware, wsAuth } = require('../core/auth');
 const { ensureRoleDocs } = require('../core/role-docs');
 const { listProjectFolders, listBuildHistory, readBuildHistory, isValidTaskSlug, buildFileTree } = require('../core/archive');
@@ -59,7 +59,7 @@ wss.on('connection', (ws, req) => {
 });
 
 app.post('/task', (req, res) => {
-    const { description, mode, slug } = req.body;
+    const { description, mode, slug, autoApprove, autoApproveCap } = req.body;
     if (!description || !description.trim()) {
         return res.status(400).json({ error: 'description required' });
     }
@@ -72,11 +72,37 @@ app.post('/task', (req, res) => {
             return res.status(400).json({ error: 'invalid slug format (must be lowercase kebab-case, ≤50 chars)' });
         }
     }
+
+    // Auto-approve validation. Reject hard-typed bad values; clamp soft out-of-range
+    // (UI-supplied caps are user input, can be anything). 20 is the hard ceiling: even
+    // if the caller explicitly asks for 999, we cap to prevent a typo from running away.
+    let auto = false;
+    let cap = 10;
+    if (autoApprove !== undefined) {
+        if (typeof autoApprove !== 'boolean') {
+            return res.status(400).json({ error: 'autoApprove must be boolean' });
+        }
+        auto = autoApprove;
+    }
+    if (auto) {
+        const requestedCap = Number(autoApproveCap);
+        if (!Number.isFinite(requestedCap) || requestedCap < 1) {
+            cap = 10;
+        } else if (requestedCap > 20) {
+            cap = 20;
+            logEvent('autocap_clamped', { received: requestedCap, clamped: 20 }, null);
+        } else {
+            cap = Math.floor(requestedCap);
+        }
+    }
+
     try {
         logBuffer.length = 0;
         submitTask(description.trim(), {
             mode: submitMode,
             slug: submitMode === 'continue' ? slug.trim() : undefined,
+            autoApprove: auto,
+            autoApproveCap: cap,
         });
         res.json({ ok: true });
     } catch (err) {
