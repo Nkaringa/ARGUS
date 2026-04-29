@@ -13,7 +13,7 @@ Argus uses product versioning — major/minor/patch bumps reflect user-facing sc
 - feat: extend allowed tools for Claude ([#19](https://github.com/Nkaringa/ARGUS/pull/19)) — @Nkaringa
 
 ---
-
+- Refactor Hermes build pipeline to enhance scratch file handling and ownership ([#20](https://github.com/Nkaringa/ARGUS/pull/20)) — @Nkaringa
 ## [1.0.0] — 2026-04-23
 
 First named release. Baseline for all future entries.
