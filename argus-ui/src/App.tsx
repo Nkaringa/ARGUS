@@ -89,6 +89,8 @@ export default function App() {
               onSkip={() => build.sendApproval('skip')}
               onRetry={() => build.sendApproval('retry')}
               onAbort={() => build.sendApproval('abort')}
+              onApprovePlan={() => build.sendPlanReview('approve_plan')}
+              onRequestPlanChanges={(feedback: string) => build.sendPlanReview('request_plan_changes', feedback)}
             />
           )}
           {section === 'warzone' && (

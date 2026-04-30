@@ -30,14 +30,38 @@ let broadcastFn = null;
 // last-mile defensive default so an internal caller can't bypass the bound.
 let autoApprove = false;
 let autoApproveCap = 10;
+// Plan-review gate. When planReview === true, after `planning` completes the workflow
+// enters `awaiting_plan_review` instead of going directly to `building`. The user can
+// approve the plan, abort, or request changes (which sends Claude back to planning
+// with the feedback). planRevisionFeedback is captured at REQUEST_PLAN_CHANGES so
+// launchPlanner can inject it into Claude's next planning prompt; cleared on
+// APPROVE_PLAN (success path) or onIdle (cleanup).
+let planReview = false;
+let planRevisionFeedback = null;
 
 function setBroadcast(fn) {
     broadcastFn = fn;
 }
 
 function broadcast(state, extra = {}) {
+    // Include the full set of state fields the UI cares about, not just state+task+iteration.
+    // Without slug here, components mounted on a state transition (e.g. PlanReviewPanel
+    // needing slug to fetch the plan markdown) sit empty until the user refreshes the page,
+    // because the WS reconnect is the only path that delivers the full getState() payload.
+    // Same reasoning for grade — required by `done` and `awaiting_approval` UI panels.
     if (broadcastFn) {
-        broadcastFn({ type: 'state', state, task: currentTask, iteration: iterationCount, ...extra });
+        broadcastFn({
+            type: 'state',
+            state,
+            task: currentTask,
+            iteration: iterationCount,
+            slug: currentSlug,
+            grade: lastGrade,
+            autoApprove,
+            autoApproveCap,
+            planReview,
+            ...extra,
+        });
     }
 }
 
@@ -47,10 +71,29 @@ let service;
 
 function launchPlanner() {
     if (!currentTask) return;
-    logEvent('agent.started', { role: 'plan', task: currentTask, mode: currentMode, slug: currentSlug }, currentTaskId);
+    logEvent('agent.started', {
+        role: 'plan', task: currentTask, mode: currentMode, slug: currentSlug,
+        plan_revision: !!planRevisionFeedback,
+    }, currentTaskId);
 
     let plannerPrompt;
-    if (currentMode === 'continue' && currentSlug) {
+    if (planRevisionFeedback && currentSlug) {
+        // Plan-revision mode: user reviewed the plan and requested changes.
+        // Read prior plan from disk and pass it back to Claude with the feedback.
+        const planFile = `${currentSlug}-Plan.md`;
+        plannerPrompt = `You are the PLANNER in the Argus build pipeline. You previously wrote a plan for this task; the user has reviewed it and requested revisions.
+
+ORIGINAL TASK: ${currentTask}
+
+PRIOR PLAN: read \`${planFile}\` for the full content. The file already exists at the project root. Read it first.
+
+USER FEEDBACK ON THE PRIOR PLAN:
+${planRevisionFeedback}
+
+Revise the plan to incorporate this feedback. Overwrite \`${planFile}\` with the revised plan. End the file with the exact line \`**Plan Status:** READY\` so Hermes advances the pipeline.
+
+Keep the same slug (\`${currentSlug}\`). Apply the user's feedback specifically — do not silently introduce other changes beyond what the feedback asked for.`;
+    } else if (currentMode === 'continue' && currentSlug) {
         const planFile = `${currentSlug}-Plan.md`;
         plannerPrompt = `You are the PLANNER in the Argus build pipeline. Read .claude/CLAUDE.md for your role spec. Task: ${currentTask}
 
@@ -366,12 +409,24 @@ const hermesMachine = createMachine({
         planning: {
             entry: 'startPlanner',
             on: {
-                PLAN_DONE:    { target: 'building', actions: 'resetRetry' },
+                PLAN_DONE:        { target: 'building', actions: 'resetRetry' },
+                PLAN_DONE_REVIEW: { target: 'awaiting_plan_review', actions: 'resetRetry' },
                 PLAN_FAILED:  [
                     { target: 'planning', guard: 'canRetry', actions: 'incrementRetry', reenter: true },
                     { target: 'paused' },
                 ],
                 ABORT: 'idle',
+            },
+        },
+        awaiting_plan_review: {
+            entry: 'onPlanReviewEntry',
+            after: {
+                [APPROVAL_TIMEOUT_MS]: { target: 'idle', actions: 'onPlanReviewTimeout' },
+            },
+            on: {
+                APPROVE_PLAN:          { target: 'building',  actions: 'clearPlanFeedback' },
+                REQUEST_PLAN_CHANGES:  { target: 'planning',  actions: 'storePlanFeedback', reenter: true },
+                ABORT:                 'idle',
             },
         },
         building: {
@@ -457,6 +512,8 @@ service = createActor(hermesMachine.provide({
             lastGrade = null;
             autoApprove = false;
             autoApproveCap = 10;
+            planReview = false;
+            planRevisionFeedback = null;
         },
         onApprovalEntry: () => {
             console.log(`[workflow] Awaiting approval (timeout in ${Math.round(APPROVAL_TIMEOUT_MS / 60000)} min)`);
@@ -510,6 +567,42 @@ service = createActor(hermesMachine.provide({
             archiveLiveFiles();
             currentTask = null;
             currentTaskId = null;
+        },
+        onPlanReviewEntry: () => {
+            console.log(`[workflow] Awaiting plan review (timeout in ${Math.round(APPROVAL_TIMEOUT_MS / 60000)} min)`);
+            logEvent('plan_review_armed', {
+                deadline_ms: APPROVAL_TIMEOUT_MS,
+                slug: currentSlug,
+                plan_file: currentSlug ? `${currentSlug}-Plan.md` : null,
+            }, currentTaskId);
+        },
+        onPlanReviewTimeout: () => {
+            console.warn(`[workflow] Plan-review timeout fired after ${Math.round(APPROVAL_TIMEOUT_MS / 60000)} min — auto-aborting`);
+            if (currentTaskId) {
+                completeTask(currentTaskId, iterationCount, lastGrade, 'CANCELLED');
+                logEvent('task.aborted', {
+                    taskId: currentTaskId,
+                    reason: 'plan_review_timeout',
+                    timeout_ms: APPROVAL_TIMEOUT_MS,
+                }, currentTaskId);
+                if (broadcastFn) broadcastFn({ type: 'history', items: getHistory() });
+            }
+            archiveLiveFiles();
+            currentTask = null;
+            currentTaskId = null;
+        },
+        storePlanFeedback: ({ event }) => {
+            planRevisionFeedback = (event && event.feedback) || null;
+            if (planRevisionFeedback) {
+                logEvent('plan_revision_requested', {
+                    slug: currentSlug,
+                    feedback_chars: planRevisionFeedback.length,
+                }, currentTaskId);
+            }
+        },
+        clearPlanFeedback: () => {
+            logEvent('plan_review_approved', { slug: currentSlug }, currentTaskId);
+            planRevisionFeedback = null;
         },
     },
     guards: {
@@ -584,7 +677,11 @@ function startWorkflow() {
                 console.log(`[workflow] Slug for this task: ${currentSlug}`);
             }
         }
-        service.send({ type: 'PLAN_DONE' });
+        if (planReview) {
+            service.send({ type: 'PLAN_DONE_REVIEW' });
+        } else {
+            service.send({ type: 'PLAN_DONE' });
+        }
     });
 
     // Build/audit completion no longer comes from the watcher — the workflow drives the
@@ -629,6 +726,10 @@ function submitTask(description, opts = {}) {
     } else {
         autoApproveCap = 10;
     }
+    // Plan-review opt. Server-side already validates as boolean; this is the
+    // last-mile defensive coerce so an internal caller can't bypass it.
+    planReview = opts.planReview === true;
+    planRevisionFeedback = null;
     // Safety-net archival. The primary archive triggers are onDone and abort, which run
     // when the task actually finishes. This call covers the edge case of hermes crashing
     // mid-task (or a manual restart) — stale meta files at WORK_DIR root get archived
@@ -643,17 +744,22 @@ function submitTask(description, opts = {}) {
         description, mode, slug: currentSlug,
         auto_approve: autoApprove,
         auto_approve_cap: autoApproveCap,
+        plan_review: planReview,
     }, currentTaskId);
     service.send({ type: 'TASK_SUBMITTED' });
 }
 
-function sendApproval(action) {
+function sendApproval(action, opts = {}) {
     if (action === 'approve') {
         service.send({ type: 'APPROVE' });
     } else if (action === 'skip') {
         service.send({ type: 'SKIP' });
     } else if (action === 'retry') {
         service.send({ type: 'RETRY' });
+    } else if (action === 'approve_plan') {
+        service.send({ type: 'APPROVE_PLAN' });
+    } else if (action === 'request_plan_changes') {
+        service.send({ type: 'REQUEST_PLAN_CHANGES', feedback: opts.feedback || '' });
     } else if (action === 'abort') {
         if (currentTaskId) {
             completeTask(currentTaskId, iterationCount, lastGrade, 'CANCELLED');
@@ -683,6 +789,7 @@ function getState() {
         grade: lastGrade,
         autoApprove,
         autoApproveCap,
+        planReview,
     };
 }
 

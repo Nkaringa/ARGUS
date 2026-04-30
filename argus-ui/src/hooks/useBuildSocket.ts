@@ -7,6 +7,7 @@ export interface SubmitOpts {
   slug?: string;
   autoApprove?: boolean;
   autoApproveCap?: number;
+  planReview?: boolean;
 }
 
 // Cap the in-memory log buffer client-side. The line splitter on the backend now publishes
@@ -23,6 +24,7 @@ export function useBuildSocket() {
   const [slug, setSlug] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState(false);
   const [autoApproveCap, setAutoApproveCap] = useState(10);
+  const [planReview, setPlanReview] = useState(false);
   const [lines, setLines] = useState<OutputLine[]>([]);
   const [droppedLineCount, setDroppedLineCount] = useState(0);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -61,6 +63,7 @@ export function useBuildSocket() {
         if (msg.slug !== undefined) setSlug(msg.slug);
         if (msg.autoApprove !== undefined) setAutoApprove(msg.autoApprove);
         if (msg.autoApproveCap !== undefined) setAutoApproveCap(msg.autoApproveCap);
+        if (msg.planReview !== undefined) setPlanReview(msg.planReview);
       }
 
       if (msg.type === 'output') {
@@ -138,6 +141,9 @@ export function useBuildSocket() {
         body.autoApproveCap = opts.autoApproveCap;
       }
     }
+    if (opts?.planReview) {
+      body.planReview = true;
+    }
     const res = await fetch(`${SERVERS.build.http}/task`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -177,5 +183,30 @@ export function useBuildSocket() {
     setDroppedLineCount(0);
   }, []);
 
-  return { state, task, iteration, grade, slug, autoApprove, autoApproveCap, stageStartedAt, lines, droppedLineCount, history, projects, submitTask, sendApproval, stop };
+  const sendPlanReview = useCallback(
+    async (action: 'approve_plan' | 'request_plan_changes', feedback?: string) => {
+      const body: Record<string, unknown> = { action };
+      if (action === 'request_plan_changes') {
+        body.feedback = feedback ?? '';
+      }
+      const res = await fetch(`${SERVERS.build.http}/approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(errBody.error || `Request failed (${res.status})`);
+      }
+      if (action === 'approve_plan') {
+        // Clear log lines on plan approval — same as on revision approval.
+        // Plan-revision keeps the lines so the user can see prior planner output.
+        setLines([]);
+        setDroppedLineCount(0);
+      }
+    },
+    [],
+  );
+
+  return { state, task, iteration, grade, slug, autoApprove, autoApproveCap, planReview, stageStartedAt, lines, droppedLineCount, history, projects, submitTask, sendApproval, sendPlanReview, stop };
 }

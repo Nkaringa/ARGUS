@@ -1,8 +1,12 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { BuildState, OutputLine } from '../../types';
 import { FileBrowser } from './FileBrowser';
 import { InlinePreview } from './InlinePreview';
 import { Panel, ActionButton } from '../shared/Panel';
+import { markdownComponents } from '../shared/markdownComponents';
+import { SERVERS, authHeaders } from '../../config';
 
 type ViewMode = 'pipeline' | 'workspace';
 
@@ -18,11 +22,13 @@ interface BuildViewProps {
   lines: OutputLine[];
   droppedLineCount: number;
   projects: string[];
-  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string; autoApprove?: boolean; autoApproveCap?: number }) => void;
+  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string; autoApprove?: boolean; autoApproveCap?: number; planReview?: boolean }) => void;
   onApprove: () => void;
   onSkip: () => void;
   onRetry: () => void;
   onAbort: () => void;
+  onApprovePlan: () => void;
+  onRequestPlanChanges: (feedback: string) => void;
 }
 
 /* ────────────────────────────── constants ────────────────────────────── */
@@ -498,6 +504,7 @@ function ActiveStage({
   state,
   iteration,
   grade,
+  slug,
   stageStartedAt,
   autoApprove,
   autoApproveCap,
@@ -505,10 +512,13 @@ function ActiveStage({
   onSkip,
   onRetry,
   onAbort,
+  onApprovePlan,
+  onRequestPlanChanges,
 }: {
   state: BuildState;
   iteration: number;
   grade?: string;
+  slug: string | null;
   stageStartedAt: number;
   autoApprove: boolean;
   autoApproveCap: number;
@@ -516,6 +526,8 @@ function ActiveStage({
   onSkip: () => void;
   onRetry: () => void;
   onAbort: () => void;
+  onApprovePlan: () => void;
+  onRequestPlanChanges: (feedback: string) => void;
 }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -523,6 +535,10 @@ function ActiveStage({
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [state]);
+
+  if (state === 'awaiting_plan_review') {
+    return <PlanReviewPanel slug={slug} onApprove={onApprovePlan} onRequestChanges={onRequestPlanChanges} onAbort={onAbort} />;
+  }
 
   if (state === 'awaiting_approval') {
     // Two display modes for awaiting_approval:
@@ -731,6 +747,185 @@ function ActiveStage({
   );
 }
 
+/* ────────────────────────────── plan review ────────────────────────────── */
+
+function PlanReviewPanel({
+  slug,
+  onApprove,
+  onRequestChanges,
+  onAbort,
+}: {
+  slug: string | null;
+  onApprove: () => void;
+  onRequestChanges: (feedback: string) => void;
+  onAbort: () => void;
+}) {
+  const [planContent, setPlanContent] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const [requestingChanges, setRequestingChanges] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  // Fetch the plan from disk via the existing /files/content endpoint. Re-fetch
+  // when slug changes (continuation flows). Only fires when slug is non-null —
+  // before slug is set we have nothing to display anyway.
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    setPlanContent(null);
+    setLoadError(null);
+    fetch(
+      `${SERVERS.build.http}/files/content?path=${encodeURIComponent(`${slug}-Plan.md`)}`,
+      { headers: authHeaders() },
+    )
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        if (cancelled) return;
+        if (!res.ok) {
+          setLoadError(body.error || `HTTP ${res.status}`);
+        } else if (typeof body.content === 'string') {
+          setPlanContent(body.content);
+        } else {
+          setLoadError('plan file is binary or unreadable');
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setLoadError((e as Error).message);
+      });
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  const submitFeedback = () => {
+    const trimmed = feedback.trim();
+    if (!trimmed) return;
+    onRequestChanges(trimmed);
+    setFeedback('');
+    setRequestingChanges(false);
+  };
+
+  return (
+    <Panel headLabel="plan ready" headRight={`awaiting your review${slug ? ` · ${slug}` : ''}`}>
+      <div style={{ padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Header row — view toggle */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <span style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink-dimmer)', textTransform: 'uppercase' }}>
+            view:
+          </span>
+          <button
+            onClick={() => setShowRaw(false)}
+            style={{
+              fontSize: 10,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              padding: '4px 10px',
+              border: '1px solid var(--rule)',
+              background: !showRaw ? 'var(--accent)' : 'transparent',
+              color: !showRaw ? 'var(--accent-ink)' : 'var(--ink-dim)',
+              cursor: 'pointer',
+            }}
+          >
+            ▸ rendered
+          </button>
+          <button
+            onClick={() => setShowRaw(true)}
+            style={{
+              fontSize: 10,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              padding: '4px 10px',
+              border: '1px solid var(--rule)',
+              background: showRaw ? 'var(--accent)' : 'transparent',
+              color: showRaw ? 'var(--accent-ink)' : 'var(--ink-dim)',
+              cursor: 'pointer',
+            }}
+          >
+            ◧ raw
+          </button>
+        </div>
+
+        {/* Plan content */}
+        <div
+          style={{
+            padding: '14px 16px',
+            background: 'var(--bg-3)',
+            border: '1px solid var(--rule)',
+            maxHeight: 480,
+            overflowY: 'auto',
+            fontSize: 13,
+            lineHeight: 1.55,
+          }}
+        >
+          {loadError && (
+            <div style={{ color: 'var(--warn)', fontSize: 12 }}>
+              could not load plan: {loadError}
+            </div>
+          )}
+          {!loadError && planContent === null && (
+            <div style={{ color: 'var(--ink-dim)', fontSize: 12 }}>loading plan…</div>
+          )}
+          {!loadError && planContent !== null && (
+            showRaw ? (
+              <pre style={{ margin: 0, fontFamily: 'var(--font-body)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--ink)' }}>
+                {planContent}
+              </pre>
+            ) : (
+              <div className="markdown-body" style={{ color: 'var(--ink)' }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {planContent}
+                </ReactMarkdown>
+              </div>
+            )
+          )}
+        </div>
+
+        {/* Action row */}
+        <div style={{ display: 'flex', gap: 14, paddingTop: 8, borderTop: '1px dashed var(--rule)', alignItems: 'center' }}>
+          <ActionButton primary onClick={onApprove}>approve plan →</ActionButton>
+          <ActionButton onClick={() => setRequestingChanges((v) => !v)}>
+            {requestingChanges ? 'cancel changes' : 'request changes ▾'}
+          </ActionButton>
+          <div style={{ marginLeft: 'auto' }}>
+            <ActionButton warn onClick={onAbort}>abort</ActionButton>
+          </div>
+        </div>
+
+        {/* Request-changes textarea */}
+        {requestingChanges && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 }}>
+            <span style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink-dimmer)', textTransform: 'uppercase' }}>
+              what should change about the plan?
+            </span>
+            <textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              rows={4}
+              placeholder="e.g. use Next.js 14 not 15. add a /shared folder for reusable components."
+              style={{
+                resize: 'vertical',
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: 'var(--ink)',
+                background: 'var(--bg-3)',
+                border: '1px solid var(--rule)',
+                padding: '10px 12px',
+                width: '100%',
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink-dimmer)', textTransform: 'uppercase' }}>
+                {feedback.trim().length} / 4096 chars
+              </span>
+              <ActionButton primary onClick={submitFeedback}>
+                send to claude →
+              </ActionButton>
+            </div>
+          </div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 function StatBlock({ label, value, lime, dim }: { label: string; value: string; lime?: boolean; dim?: boolean }) {
   return (
     <div>
@@ -862,7 +1057,7 @@ function TaskInputPanel({
 }: {
   state: BuildState;
   projects: string[];
-  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string; autoApprove?: boolean; autoApproveCap?: number }) => void;
+  onSubmit: (description: string, opts?: { mode: 'new' | 'continue'; slug?: string; autoApprove?: boolean; autoApproveCap?: number; planReview?: boolean }) => void;
 }) {
   const [input, setInput] = useState('');
   const [projectSel, setProjectSel] = useState<string>('new');
@@ -870,6 +1065,7 @@ function TaskInputPanel({
   // Empty string means "use the server default of 10". Stored as string to allow
   // the user to clear the field; parsed to int only at submit time.
   const [capInput, setCapInput] = useState<string>('');
+  const [planReviewOn, setPlanReviewOn] = useState(false);
   const effectiveSel = projectSel !== 'new' && !projects.includes(projectSel) ? 'new' : projectSel;
   const continueSlug = effectiveSel === 'new' ? null : effectiveSel;
   const disabled = state !== 'idle' && state !== 'done';
@@ -877,7 +1073,7 @@ function TaskInputPanel({
   const handleSubmit = () => {
     const text = input.trim();
     if (!text || disabled) return;
-    const opts: { mode: 'new' | 'continue'; slug?: string; autoApprove?: boolean; autoApproveCap?: number } =
+    const opts: { mode: 'new' | 'continue'; slug?: string; autoApprove?: boolean; autoApproveCap?: number; planReview?: boolean } =
       continueSlug ? { mode: 'continue', slug: continueSlug } : { mode: 'new' };
     if (autoOn) {
       opts.autoApprove = true;
@@ -885,6 +1081,9 @@ function TaskInputPanel({
       if (Number.isFinite(parsed) && parsed > 0) {
         opts.autoApproveCap = parsed;
       }
+    }
+    if (planReviewOn) {
+      opts.planReview = true;
     }
     onSubmit(text, opts);
     setInput('');
@@ -988,6 +1187,30 @@ function TaskInputPanel({
               />
             </>
           )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <label
+            htmlFor="plan-review-toggle"
+            style={{
+              fontSize: 10,
+              letterSpacing: '0.14em',
+              color: 'var(--ink-dimmer)',
+              textTransform: 'uppercase',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <input
+              id="plan-review-toggle"
+              type="checkbox"
+              checked={planReviewOn}
+              onChange={(e) => setPlanReviewOn(e.target.checked)}
+              disabled={disabled}
+            />
+            review plan before build
+          </label>
         </div>
         <div
           style={{
@@ -1196,6 +1419,8 @@ export function BuildView({
   onSkip,
   onRetry,
   onAbort,
+  onApprovePlan,
+  onRequestPlanChanges,
 }: BuildViewProps) {
   // View mode toggle: pipeline (cockpit) vs workspace (file tree + preview split pane).
   // Local state — doesn't persist across tab switches. Selection lives here too so the
@@ -1270,6 +1495,7 @@ export function BuildView({
           state={state}
           iteration={iteration}
           grade={grade}
+          slug={slug}
           stageStartedAt={stageStartedAt}
           autoApprove={autoApprove}
           autoApproveCap={autoApproveCap}
@@ -1277,6 +1503,8 @@ export function BuildView({
           onSkip={onSkip}
           onRetry={onRetry}
           onAbort={onAbort}
+          onApprovePlan={onApprovePlan}
+          onRequestPlanChanges={onRequestPlanChanges}
         />
       </section>
 

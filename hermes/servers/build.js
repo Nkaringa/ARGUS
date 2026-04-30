@@ -59,7 +59,7 @@ wss.on('connection', (ws, req) => {
 });
 
 app.post('/task', (req, res) => {
-    const { description, mode, slug, autoApprove, autoApproveCap } = req.body;
+    const { description, mode, slug, autoApprove, autoApproveCap, planReview } = req.body;
     if (!description || !description.trim()) {
         return res.status(400).json({ error: 'description required' });
     }
@@ -96,6 +96,12 @@ app.post('/task', (req, res) => {
         }
     }
 
+    // planReview: optional boolean. Reject hard-typed bad values (string "yes" etc.).
+    if (planReview !== undefined && typeof planReview !== 'boolean') {
+        return res.status(400).json({ error: 'planReview must be boolean' });
+    }
+    const review = planReview === true;
+
     try {
         logBuffer.length = 0;
         submitTask(description.trim(), {
@@ -103,6 +109,7 @@ app.post('/task', (req, res) => {
             slug: submitMode === 'continue' ? slug.trim() : undefined,
             autoApprove: auto,
             autoApproveCap: cap,
+            planReview: review,
         });
         res.json({ ok: true });
     } catch (err) {
@@ -191,12 +198,29 @@ app.get('/history/builds/:slug', (req, res) => {
 });
 
 app.post('/approval', (req, res) => {
-    const { action } = req.body;
-    if (!['approve', 'skip', 'retry', 'abort'].includes(action)) {
+    const { action, feedback } = req.body;
+    const allowed = ['approve', 'skip', 'retry', 'abort', 'approve_plan', 'request_plan_changes'];
+    if (!allowed.includes(action)) {
         return res.status(400).json({ error: 'invalid action' });
     }
-    if (action === 'approve') logBuffer.length = 0;
-    sendApproval(action);
+
+    // request_plan_changes carries user feedback that gets injected into Claude's
+    // next planning prompt. Validate as a non-empty string under 4 KB to prevent
+    // both empty payloads and prompt-injection footguns.
+    if (action === 'request_plan_changes') {
+        if (typeof feedback !== 'string' || !feedback.trim()) {
+            return res.status(400).json({ error: 'feedback required for request_plan_changes' });
+        }
+        if (feedback.length > 4096) {
+            return res.status(400).json({ error: 'feedback too long (max 4096 chars)' });
+        }
+    }
+
+    // Clear the live log buffer when starting a new build/audit cycle (approve, approve_plan).
+    // Keep buffer on plan-revision so the user sees prior planner output during iteration.
+    if (action === 'approve' || action === 'approve_plan') logBuffer.length = 0;
+
+    sendApproval(action, { feedback });
     res.json({ ok: true });
 });
 

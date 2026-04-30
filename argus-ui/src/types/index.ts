@@ -20,6 +20,7 @@ export interface DiscussionArchive {
 export type BuildState =
   | 'idle'
   | 'planning'
+  | 'awaiting_plan_review'
   | 'building'
   | 'auditing'
   | 'awaiting_approval'
