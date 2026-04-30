@@ -4,7 +4,7 @@
     "model": "gemini",
     "role": "build",
     "command": "gemini -p \"{task}\" -y",
-    "timeout": 300000,
+    "timeout": 1800000,
     "completionSignal": {
       "type": "file_append",
       "file": "*-Build-Log.md",
@@ -26,7 +26,7 @@
     "model": "claude",
     "role": "plan",
     "command": "claude --allowedTools Edit Write Read Glob Grep WebFetch WebSearch -p \"{task}\" < /dev/null",
-    "timeout": 240000,
+    "timeout": 600000,
     "completionSignal": {
       "type": "file_content",
       "file": "*-Plan.md",
@@ -38,7 +38,7 @@
     "model": "codex",
     "role": "audit",
     "command": "codex exec --full-auto --skip-git-repo-check \"{task}\" < /dev/null",
-    "timeout": 240000,
+    "timeout": 1800000,
     "completionSignal": {
       "type": "file_append",
       "file": "*-Build-Feedback.md",
