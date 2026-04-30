@@ -170,9 +170,25 @@ function runAgent(agentKey, task, { outputTopic = 'agent.output', pipeline, cwd,
     const teardownStreams = attachOutputStream(proc, agent, outputTopic, isNoise);
     const timeout = attachTimeout(proc, agent, teardownStreams);
 
+    // Resolve on 'exit' (process termination), NOT 'close' (full stdio drain). Codex and
+    // Gemini both spawn helper subprocesses (macOS sandbox-exec, mcp tool servers, etc.)
+    // that inherit our stdout pipe and survive when the agent's main process dies — most
+    // visibly when the timeout SIGTERMs the parent and the helpers, in a different process
+    // group, keep the pipe open. Node only fires 'close' when ALL writers close their end
+    // of the pipe, so waiting on 'close' lets a leaked helper hang the workflow forever.
+    // We don't care about helpers' lifecycle; once the agent's main proc has exited, its
+    // contract with us is done. We destroy our end of the pipes so any helper still writing
+    // gets EPIPE and goes away on its own.
     return new Promise((resolve, reject) => {
-        proc.on('close', (code) => {
+        let settled = false;
+        proc.on('exit', (code, signal) => {
+            if (settled) return;
+            settled = true;
             timeout.clear();
+            // Drop our pipe handles so the kernel won't keep them open just because a
+            // re-parented grandchild still has its inherited copy.
+            try { proc.stdout && proc.stdout.destroy(); } catch { /* ignore */ }
+            try { proc.stderr && proc.stderr.destroy(); } catch { /* ignore */ }
             const durationMs = Date.now() - startedAt;
             publishCompleted(pipeline, agent, durationMs, code, capturedTaskId);
             if (timeout.wasKilled()) {
@@ -184,11 +200,14 @@ function runAgent(agentKey, task, { outputTopic = 'agent.output', pipeline, cwd,
             if (code === 0) {
                 resolve({ agent: agent.name, role: agent.role });
             } else {
-                reject(new Error(`${agent.name} exited with code ${code}`));
+                const reason = signal ? `killed by ${signal}` : `exited with code ${code}`;
+                reject(new Error(`${agent.name} ${reason}`));
             }
         });
 
         proc.on('error', (err) => {
+            if (settled) return;
+            settled = true;
             timeout.clear();
             teardownStreams();
             reject(err);
