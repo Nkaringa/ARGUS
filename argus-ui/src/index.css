@@ -5,7 +5,7 @@
   --sidebar-width: 240px;
   --statusbar-height: 48px;
 
-  /* Palette — dark terminal (mockup-derived) */
+  /* Palette — dark terminal (default theme) */
   --bg:         #0c0c0d;
   --bg-2:       #131315;
   --bg-3:       #17171a;
@@ -27,10 +27,50 @@
   --gemini:     #5b9cff;
   --codex:      #b084ff;
 
+  /* Theme-flippable derived tokens (computed shades + scanline color).
+     Components reference these via var() instead of hardcoding rgba()/#hex
+     so light mode swaps them out cleanly. */
+  --scanline:         rgba(255, 255, 255, 0.012);
+  --accent-tint:      rgba(196, 255, 61, 0.08);
+  --accent-tint-soft: rgba(196, 255, 61, 0.03);
+  --accent-hover:     #d9ff66;
+
   /* Typography — JetBrains Mono for body + labels + logs (the terminal-feel workhorse),
      Space Grotesk for display headings (gives headlines a typographic voice that mono can't). */
   --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-body:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Light palette — pure-white office aesthetic, neutral greyscale ink.
+   Panel layers (bg-2, bg-3) sit very close to pure white so the page reads
+   as white-white overall; differentiation comes from rule borders rather
+   than grey shading. Lime accent shifted to deep olive so it carries weight
+   on white without losing the brand signature. Agent identity colors
+   deepened for AA contrast. */
+[data-theme="light"] {
+  --bg:         #ffffff;
+  --bg-2:       #fbfbfb;
+  --bg-3:       #f3f3f3;
+  --bg-hover:   #ebebeb;
+  --ink:        #1a1a1a;
+  --ink-dim:    #555555;
+  --ink-dimmer: #8a8a8a;
+  --rule:       #d6d6d6;
+  --rule-hot:   #b8b8b8;
+  --accent:     #5e7a00;
+  --accent-ink: #ffffff;
+  --accent-dim: #455900;
+  --warn:       #c14a1d;
+  --ok:         #3d7050;
+
+  --claude:     #b8553a;
+  --gemini:     #2d6cd6;
+  --codex:      #7a4dd6;
+
+  --scanline:         rgba(0, 0, 0, 0.012);
+  --accent-tint:      rgba(94, 122, 0, 0.08);
+  --accent-tint-soft: rgba(94, 122, 0, 0.03);
+  --accent-hover:     #4a6200;
 }
 
 * { box-sizing: border-box; }
@@ -49,14 +89,16 @@ body {
   font-weight: 400;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* Subtle scanlines — signature terminal texture, visible but non-distracting. */
+  /* Subtle scanlines — signature terminal texture, visible but non-distracting.
+     Uses --scanline so it flips polarity (faint white on dark, faint black on light). */
   background-image: repeating-linear-gradient(
     0deg,
-    rgba(255, 255, 255, 0.012) 0px,
-    rgba(255, 255, 255, 0.012) 1px,
+    var(--scanline) 0px,
+    var(--scanline) 1px,
     transparent 1px,
     transparent 3px
   );
+  transition: background 0.18s, color 0.18s;
 }
 
 ::selection { background: var(--accent); color: var(--accent-ink); }

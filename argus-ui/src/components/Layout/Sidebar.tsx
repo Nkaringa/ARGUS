@@ -1,39 +1,28 @@
 import { useState } from 'react';
 import type { Section, BuildState, WarzoneState } from '../../types';
 import { ResetSessionsModal } from './ResetSessionsModal';
+import { ThemeToggle } from './ThemeToggle';
 
 interface SidebarProps {
   current: Section;
   onNavigate: (section: Section) => void;
   buildState: BuildState;
   warzoneState: WarzoneState;
-  onStop: () => void;
 }
 
-// Human-readable state label for the sidebar header pill.
-// Examples: 'discussing_gemini' → 'DISCUSSING · GEMINI', 'awaiting_approval' → 'AWAITING · APPROVAL'.
-function formatState(s: BuildState | WarzoneState): string {
-  if (s === 'idle') return 'IDLE';
-  return s.toUpperCase().replace(/_/g, ' · ');
-}
-
-export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop }: SidebarProps) {
+export function Sidebar({ current, onNavigate, buildState, warzoneState }: SidebarProps) {
   const [resetOpen, setResetOpen] = useState(false);
 
   const buildBusy = buildState !== 'idle' && buildState !== 'done';
   const warzoneBusy = warzoneState !== 'idle';
-  const overallBusy = buildBusy || warzoneBusy;
-  // Warzone state wins the pill when active, otherwise Build state — roughly matches
-  // "what is the user most likely paying attention to right now."
-  const activeState: BuildState | WarzoneState = warzoneBusy ? warzoneState : buildState;
 
   return (
     <>
       <aside
         style={{
           position: 'sticky',
-          top: 'var(--statusbar-height)',
-          height: 'calc(100vh - var(--statusbar-height))',
+          top: 0,
+          height: '100vh',
           width: 'var(--sidebar-width)',
           borderRight: '1px solid var(--rule)',
           background: 'var(--bg)',
@@ -42,14 +31,40 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
           flexShrink: 0,
         }}
       >
-        {/* Head — state pill only; brand lives in the status bar */}
+        {/* Head — brand wordmark. The status bar that previously carried the
+            brand was removed; the sidebar head anchors product identity now.
+            ΛЯGUS uses Greek lambda + Cyrillic Я for visual character;
+            aria-label keeps the accessible name as plain "argus". */}
         <div
           style={{
             padding: '18px 18px 14px',
             borderBottom: '1px dashed var(--rule)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
           }}
         >
-          <StatePill state={activeState} busy={overallBusy} />
+          <span
+            style={{
+              color: 'var(--accent)',
+              fontSize: 14,
+              animation: 'blink 1.4s steps(1) infinite',
+            }}
+          >
+            ◉
+          </span>
+          <span
+            aria-label="argus"
+            style={{
+              fontFamily: 'var(--font-display)',
+              color: 'var(--ink)',
+              fontWeight: 500,
+              fontSize: 26,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            ΛЯGUS
+          </span>
         </div>
 
         {/* Nav — three grouped sections */}
@@ -119,8 +134,11 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
           />
         </nav>
 
-        {/* Footer — refresh auth, stop pipeline (only when something is running) */}
+        {/* Footer — theme toggle + refresh auth. The stop-pipeline button moved
+            to BuildView (between hero and pipeline strip) so users find it
+            inline with the active stage they're already looking at. */}
         <div style={{ borderTop: '1px solid var(--rule)' }}>
+          <ThemeToggle />
           <button
             onClick={() => setResetOpen(true)}
             style={{
@@ -142,92 +160,11 @@ export function Sidebar({ current, onNavigate, buildState, warzoneState, onStop 
             <span style={{ color: 'var(--ink-dimmer)' }}>↻ </span>
             refresh agent auth
           </button>
-
-          {overallBusy && (
-            <button
-              onClick={onStop}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '12px 18px',
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                color: 'var(--accent-ink)',
-                background: 'var(--accent)',
-                cursor: 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#d9ff66')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent)')}
-            >
-              ■ stop pipeline
-            </button>
-          )}
         </div>
       </aside>
 
       <ResetSessionsModal open={resetOpen} onClose={() => setResetOpen(false)} />
     </>
-  );
-}
-
-function StatePill({ state, busy }: { state: BuildState | WarzoneState; busy: boolean }) {
-  if (!busy) {
-    return (
-      <span
-        style={{
-          marginTop: 10,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 10,
-          letterSpacing: '0.14em',
-          color: 'var(--ink-dimmer)',
-          padding: '4px 8px',
-          border: '1px solid var(--rule-hot)',
-        }}
-      >
-        <span
-          style={{
-            width: 6,
-            height: 6,
-            background: 'var(--ink-dimmer)',
-            borderRadius: '50%',
-          }}
-        />
-        IDLE
-      </span>
-    );
-  }
-  return (
-    <span
-      style={{
-        marginTop: 10,
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 8,
-        fontSize: 10,
-        letterSpacing: '0.14em',
-        color: 'var(--accent)',
-        padding: '4px 8px',
-        border: '1px solid var(--accent)',
-        background: 'rgba(196,255,61,0.08)',
-      }}
-    >
-      <span
-        style={{
-          width: 6,
-          height: 6,
-          background: 'var(--accent)',
-          borderRadius: '50%',
-          animation: 'pulse 1.6s ease-in-out infinite',
-        }}
-      />
-      {formatState(state)}
-    </span>
   );
 }
 

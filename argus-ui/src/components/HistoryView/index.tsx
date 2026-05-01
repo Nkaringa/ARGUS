@@ -1,19 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useHistory, fetchBuildArchive, fetchDiscussionArchive } from '../../hooks/useHistory';
 import { markdownComponents } from '../shared/markdownComponents';
-import { Panel } from '../shared/Panel';
-import type { BuildArchive, DiscussionArchive } from '../../types';
+import type { BuildArchive, DiscussionArchive, HistoryEntry } from '../../types';
 
+type SectionKind = 'builds' | 'discussions';
 type Selection =
   | { kind: 'build'; slug: string }
   | { kind: 'discussion'; slug: string }
   | null;
-
 type LoadedContent =
   | { kind: 'build'; slug: string; data: BuildArchive | null }
   | { kind: 'discussion'; slug: string; data: DiscussionArchive | null };
+
+// Build-archive file tabs. Discussion archives only have the single WarZone.md
+// tab so they don't get a per-tab union — handled inline.
+type BuildTab = 'plan' | 'buildLog' | 'buildFeedback';
 
 function formatDate(mtime: number): string {
   return new Date(mtime).toLocaleString(undefined, {
@@ -25,14 +28,45 @@ function formatDate(mtime: number): string {
   });
 }
 
+// Compact "Apr 30" / "3h ago" — matches the rail's space budget.
+function formatAge(mtime: number): string {
+  const diffMs = Date.now() - mtime;
+  const minutes = Math.floor(diffMs / 60_000);
+  const hours = Math.floor(minutes / 60);
+  if (minutes < 60) return `${Math.max(1, minutes)}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(mtime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function bytesOf(text: string): number {
+  return new Blob([text]).size;
+}
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/* ────────────────────────────── main view ────────────────────────────── */
+
 export function HistoryView() {
   const { builds, discussions, loading } = useHistory();
+  const [search, setSearch] = useState('');
+  const [section, setSection] = useState<SectionKind>('builds');
   const [selected, setSelected] = useState<Selection>(null);
   const [loaded, setLoaded] = useState<LoadedContent | null>(null);
+  // Active build tab — only meaningful when a build archive is selected.
+  // Resets to 'plan' on each new build selection so the user lands on the
+  // spec first, not whatever tab they were on for a different slug.
+  const [buildTab, setBuildTab] = useState<BuildTab>('plan');
 
+  // Fetch archive content when selection changes. Same pattern as the prior
+  // implementation — cancellation guard prevents stale responses from clobbering
+  // a fresh selection's content.
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
+    if (selected.kind === 'build') setBuildTab('plan');
     const fetcher =
       selected.kind === 'build'
         ? fetchBuildArchive(selected.slug).then(
@@ -45,10 +79,19 @@ export function HistoryView() {
       if (cancelled) return;
       setLoaded(result);
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [selected]);
+
+  // Filtered + sorted lists per the search input. Search matches anywhere in
+  // the slug substring, case-insensitive. Sort newest-first by mtime.
+  const filteredBuilds = useMemo(
+    () => filterAndSort(builds, search),
+    [builds, search],
+  );
+  const filteredDiscussions = useMemo(
+    () => filterAndSort(discussions, search),
+    [discussions, search],
+  );
 
   const contentMatchesSelection =
     selected !== null &&
@@ -69,89 +112,31 @@ export function HistoryView() {
     <div
       style={{
         height: '100%',
-        display: 'flex',
+        display: 'grid',
+        gridTemplateColumns: '300px 1fr',
         background: 'var(--bg)',
         color: 'var(--ink)',
         minHeight: 0,
       }}
     >
-      {/* Left rail — builds + discussions */}
-      <aside
-        style={{
-          flexShrink: 0,
-          width: 300,
-          borderRight: '1px solid var(--rule)',
-          background: 'var(--bg)',
-          display: 'flex',
-          flexDirection: 'column',
-          minHeight: 0,
-        }}
-      >
-        <div
-          style={{
-            padding: '22px 22px 14px',
-            borderBottom: '1px dashed var(--rule)',
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              color: 'var(--ink-dimmer)',
-              letterSpacing: '0.05em',
-            }}
-          >
-            <b style={{ color: 'var(--accent)', fontWeight: 500 }}>archive</b> ~ $
-          </div>
-          <div
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 26,
-              fontWeight: 500,
-              letterSpacing: '-0.02em',
-              color: 'var(--ink)',
-              marginTop: 6,
-            }}
-          >
-            archive
-          </div>
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 10,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: 'var(--ink-dim)',
-            }}
-          >
-            read-only · {builds.length + discussions.length}{' '}
-            {builds.length + discussions.length === 1 ? 'item' : 'items'}
-          </div>
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
-          <RailSection
-            title="builds"
-            entries={builds}
-            kind="build"
-            selected={selected}
-            onSelect={setSelected}
-            empty={loading ? 'loading…' : 'no builds yet.'}
-          />
-          <RailSection
-            title="discussions"
-            entries={discussions}
-            kind="discussion"
-            selected={selected}
-            onSelect={setSelected}
-            empty={loading ? 'loading…' : 'no discussions yet.'}
-          />
-        </div>
-      </aside>
+      {/* Left rail — filter + entry list */}
+      <Rail
+        loading={loading}
+        section={section}
+        onSection={setSection}
+        search={search}
+        onSearch={setSearch}
+        builds={filteredBuilds}
+        discussions={filteredDiscussions}
+        totalBuilds={builds.length}
+        totalDiscussions={discussions.length}
+        selected={selected}
+        onSelect={setSelected}
+      />
 
       {/* Right pane */}
       <main
         style={{
-          flex: 1,
           minWidth: 0,
           minHeight: 0,
           display: 'flex',
@@ -164,118 +149,304 @@ export function HistoryView() {
         ) : contentLoading ? (
           <LoadingState />
         ) : selected.kind === 'build' ? (
-          <BuildArchiveView slug={selected.slug} archive={buildContent} />
+          <BuildArchiveView
+            slug={selected.slug}
+            archive={buildContent}
+            mtime={builds.find((b) => b.slug === selected.slug)?.mtime ?? 0}
+            tab={buildTab}
+            onTab={setBuildTab}
+          />
         ) : (
-          <DiscussionArchiveView slug={selected.slug} archive={discussionContent} />
+          <DiscussionArchiveView
+            slug={selected.slug}
+            archive={discussionContent}
+            mtime={discussions.find((d) => d.slug === selected.slug)?.mtime ?? 0}
+          />
         )}
       </main>
     </div>
   );
 }
 
-/* ────────────────────────────── left rail ────────────────────────────── */
+function filterAndSort(entries: HistoryEntry[], search: string): HistoryEntry[] {
+  const q = search.trim().toLowerCase();
+  const filtered = q ? entries.filter((e) => e.slug.toLowerCase().includes(q)) : entries;
+  // hooks return oldest→newest; reverse once for newest-first display.
+  return [...filtered].reverse();
+}
 
-function RailSection({
-  title,
-  entries,
-  kind,
+/* ────────────────────────────── rail ────────────────────────────── */
+
+function Rail({
+  loading,
+  section,
+  onSection,
+  search,
+  onSearch,
+  builds,
+  discussions,
+  totalBuilds,
+  totalDiscussions,
   selected,
   onSelect,
-  empty,
 }: {
-  title: string;
-  entries: { slug: string; mtime: number }[];
-  kind: 'build' | 'discussion';
+  loading: boolean;
+  section: SectionKind;
+  onSection: (s: SectionKind) => void;
+  search: string;
+  onSearch: (q: string) => void;
+  builds: HistoryEntry[];
+  discussions: HistoryEntry[];
+  totalBuilds: number;
+  totalDiscussions: number;
   selected: Selection;
   onSelect: (s: Selection) => void;
-  empty: string;
 }) {
+  const visible = section === 'builds' ? builds : discussions;
+  const totalVisible = section === 'builds' ? totalBuilds : totalDiscussions;
   return (
-    <div style={{ marginBottom: 20 }}>
-      <div
-        style={{
-          padding: '14px 22px 6px',
-          fontSize: 10,
-          letterSpacing: '0.16em',
-          color: 'var(--ink-dimmer)',
-          textTransform: 'uppercase',
-          display: 'flex',
-          alignItems: 'baseline',
-          gap: 6,
-        }}
-      >
-        <span style={{ color: 'var(--rule-hot)' }}>//</span>
-        {title}
-      </div>
-      {entries.length === 0 ? (
+    <aside
+      style={{
+        flexShrink: 0,
+        width: 300,
+        borderRight: '1px solid var(--rule)',
+        background: 'var(--bg)',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+      }}
+    >
+      {/* Head */}
+      <div style={{ padding: '20px 18px 14px', borderBottom: '1px solid var(--rule)' }}>
         <div
           style={{
-            fontSize: 12,
+            fontSize: 10,
+            letterSpacing: '0.18em',
             color: 'var(--ink-dimmer)',
-            padding: '4px 22px 12px',
-            fontStyle: 'italic',
+            textTransform: 'uppercase',
           }}
         >
-          {empty}
+          // read-only · {totalBuilds + totalDiscussions} archives
         </div>
-      ) : (
-        entries.map((entry) => {
-          const isActive = selected?.kind === kind && selected.slug === entry.slug;
-          return (
-            <button
-              key={`${kind}:${entry.slug}`}
-              onClick={() => onSelect({ kind, slug: entry.slug } as Selection)}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '10px 22px',
-                background: isActive ? 'var(--bg-2)' : 'transparent',
-                borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
-                cursor: 'pointer',
-                transition: 'background 0.15s, color 0.15s',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) e.currentTarget.style.background = 'var(--bg-2)';
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: isActive ? 'var(--ink)' : 'var(--ink)',
-                  lineHeight: 1.3,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {entry.slug}
-              </div>
-              <div
-                style={{
-                  fontSize: 10,
-                  letterSpacing: '0.12em',
-                  color: isActive ? 'var(--accent)' : 'var(--ink-dimmer)',
-                  textTransform: 'uppercase',
-                  marginTop: 3,
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {formatDate(entry.mtime)}
-              </div>
-            </button>
-          );
-        })
-      )}
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 26,
+            fontWeight: 500,
+            letterSpacing: '-0.02em',
+            color: 'var(--ink)',
+            marginTop: 6,
+          }}
+        >
+          archive
+        </div>
+      </div>
+
+      {/* Filter bar — search + segmented toggle */}
+      <div
+        style={{
+          padding: '12px 18px',
+          borderBottom: '1px dashed var(--rule)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: 'var(--accent)', fontWeight: 600, fontSize: 12 }}>$</span>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => onSearch(e.target.value)}
+            placeholder="search slug..."
+            style={{
+              flex: 1,
+              fontSize: 12,
+              color: 'var(--ink)',
+              background: 'var(--bg-3)',
+              border: '1px solid var(--rule)',
+              padding: '6px 10px',
+              outline: 'none',
+            }}
+          />
+        </div>
+        <SegmentedToggle
+          value={section}
+          onChange={onSection}
+          options={[
+            { key: 'builds', label: `builds (${totalBuilds})` },
+            { key: 'discussions', label: `discussions (${totalDiscussions})` },
+          ]}
+        />
+      </div>
+
+      {/* Entry list */}
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 20 }}>
+        {loading && visible.length === 0 ? (
+          <RailMessage>loading…</RailMessage>
+        ) : visible.length === 0 ? (
+          <RailMessage>
+            {search.trim()
+              ? 'no matches.'
+              : section === 'builds'
+                ? 'no builds yet.'
+                : 'no discussions yet.'}
+          </RailMessage>
+        ) : (
+          visible.map((entry) => (
+            <RailEntry
+              key={`${section}:${entry.slug}`}
+              entry={entry}
+              active={
+                selected?.kind === (section === 'builds' ? 'build' : 'discussion') &&
+                selected.slug === entry.slug
+              }
+              onClick={() =>
+                onSelect({ kind: section === 'builds' ? 'build' : 'discussion', slug: entry.slug })
+              }
+            />
+          ))
+        )}
+        {totalVisible > 0 && visible.length > 0 && search.trim() && (
+          <div
+            style={{
+              padding: '8px 18px',
+              fontSize: 10,
+              letterSpacing: '0.12em',
+              color: 'var(--ink-dimmer)',
+              textTransform: 'uppercase',
+            }}
+          >
+            {visible.length} of {totalVisible} match
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function SegmentedToggle<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { key: T; label: string }[];
+}) {
+  return (
+    <div style={{ display: 'flex', border: '1px solid var(--rule)' }}>
+      {options.map((opt) => {
+        const active = value === opt.key;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => onChange(opt.key)}
+            style={{
+              flex: 1,
+              padding: '5px 10px',
+              fontSize: 10,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: active ? 'var(--accent-ink)' : 'var(--ink-dim)',
+              background: active ? 'var(--accent)' : 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: active ? 600 : 400,
+              transition: 'color 0.15s, background 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              if (!active) e.currentTarget.style.color = 'var(--ink)';
+            }}
+            onMouseLeave={(e) => {
+              if (!active) e.currentTarget.style.color = 'var(--ink-dim)';
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-/* ────────────────────────────── right pane ────────────────────────────── */
+function RailMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 12,
+        color: 'var(--ink-dimmer)',
+        padding: '12px 18px',
+        fontStyle: 'italic',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function RailEntry({
+  entry,
+  active,
+  onClick,
+}: {
+  entry: HistoryEntry;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'left',
+        padding: '10px 18px',
+        background: active ? 'var(--bg-2)' : 'transparent',
+        border: 'none',
+        borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
+        cursor: 'pointer',
+        transition: 'background 0.15s, border-color 0.15s',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.background = 'var(--bg-2)';
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.background = 'transparent';
+      }}
+    >
+      <div
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: 13,
+          fontWeight: 500,
+          color: 'var(--ink)',
+          lineHeight: 1.3,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {entry.slug}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.12em',
+          color: active ? 'var(--accent)' : 'var(--ink-dimmer)',
+          textTransform: 'uppercase',
+          marginTop: 4,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {formatAge(entry.mtime)}
+      </div>
+    </button>
+  );
+}
+
+/* ────────────────────────────── right pane states ────────────────────────────── */
 
 function EmptyState() {
   return (
@@ -339,7 +510,7 @@ function LoadingState() {
   );
 }
 
-function ErrorState() {
+function ErrorState({ message }: { message: string }) {
   return (
     <div
       style={{
@@ -349,92 +520,300 @@ function ErrorState() {
         justifyContent: 'center',
       }}
     >
-      <span style={{ fontSize: 13, color: 'var(--warn)' }}>failed to load archive.</span>
+      <span style={{ fontSize: 13, color: 'var(--warn)' }}>{message}</span>
     </div>
   );
 }
 
-function ArchiveHeader({
+/* ────────────────────────────── metadata strip ────────────────────────────── */
+
+// Header above the file tabs. Shows the breadcrumb + slug pill + agent identity
+// chips inferred from which files are present in the archive (Plan.md ⇒ claude
+// ran, Build-Log.md ⇒ gemini, Build-Feedback.md ⇒ codex, WarZone.md ⇒ all three).
+// No DB join — pure inference from on-disk files, single source of truth.
+function MetadataStrip({
   slug,
   kind,
-  sublabel,
+  mtime,
+  agents,
 }: {
   slug: string;
   kind: 'build' | 'discussion';
-  sublabel: string;
+  mtime: number;
+  agents: { claude: boolean; gemini: boolean; codex: boolean };
+}) {
+  return (
+    <header
+      style={{
+        padding: '18px 26px',
+        borderBottom: '1px solid var(--rule)',
+        background: 'var(--bg-2)',
+        display: 'flex',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+        gap: 24,
+        flexWrap: 'wrap',
+      }}
+    >
+      <div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontSize: 11,
+            color: 'var(--ink-dimmer)',
+            letterSpacing: '0.06em',
+            marginBottom: 8,
+          }}
+        >
+          <span style={{ color: 'var(--ink)' }}>archive</span>
+          <span style={{ color: 'var(--rule-hot)' }}>/</span>
+          <span style={{ color: 'var(--accent)' }}>{kind}</span>
+          <span style={{ color: 'var(--rule-hot)' }}>·</span>
+          <span>sealed {formatDate(mtime)}</span>
+        </div>
+        <h1
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'clamp(28px, 4vw, 44px)',
+            fontWeight: 500,
+            lineHeight: 1,
+            letterSpacing: '-0.03em',
+            color: 'var(--ink)',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 14,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 16,
+              fontWeight: 500,
+              background: 'var(--accent)',
+              color: 'var(--accent-ink)',
+              padding: '2px 8px',
+            }}
+          >
+            {slug}
+          </span>
+        </h1>
+      </div>
+
+      {/* Agents involved — chips colored by identity. Inferred from file presence:
+          presence of Plan.md ⇒ claude ran, Build-Log.md ⇒ gemini, Build-Feedback.md ⇒ codex.
+          Discussion archives have all three since WarZone.md is a 3-way debate. */}
+      {(agents.claude || agents.gemini || agents.codex) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div
+            style={{
+              fontSize: 9,
+              letterSpacing: '0.18em',
+              color: 'var(--ink-dimmer)',
+              textTransform: 'uppercase',
+            }}
+          >
+            agents
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {agents.claude && <AgentChip name="claude" color="var(--claude)" />}
+            {agents.gemini && <AgentChip name="gemini" color="var(--gemini)" />}
+            {agents.codex && <AgentChip name="codex" color="var(--codex)" />}
+          </div>
+        </div>
+      )}
+    </header>
+  );
+}
+
+function AgentChip({ name, color }: { name: string; color: string }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '2px 8px',
+        border: `1px solid ${color}`,
+        fontFamily: 'var(--font-display)',
+        fontSize: 12,
+        fontWeight: 500,
+        letterSpacing: '-0.01em',
+        color,
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: color,
+        }}
+      />
+      {name}
+    </span>
+  );
+}
+
+/* ────────────────────────────── tab strip ────────────────────────────── */
+
+function TabStrip<K extends string>({
+  tabs,
+  active,
+  onSelect,
+}: {
+  tabs: { key: K; label: string; size: number; empty: boolean }[];
+  active: K;
+  onSelect: (k: K) => void;
 }) {
   return (
     <div
       style={{
-        padding: '22px 26px',
+        display: 'flex',
         borderBottom: '1px solid var(--rule)',
-        flexShrink: 0,
+        background: 'var(--bg-2)',
+        padding: '0 26px',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 14,
-          fontSize: 11,
-          color: 'var(--ink-dimmer)',
-          letterSpacing: '0.06em',
-          marginBottom: 10,
-        }}
-      >
-        <span style={{ color: 'var(--ink)' }}>archive</span>
-        <span style={{ color: 'var(--rule-hot)' }}>/</span>
-        <span style={{ color: 'var(--accent)' }}>{kind}</span>
-        <span style={{ color: 'var(--ink-dim)', fontSize: 10, marginLeft: 'auto' }}>
-          {sublabel}
-        </span>
-      </div>
-      <h1
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 'clamp(28px, 4vw, 44px)',
-          fontWeight: 500,
-          lineHeight: 1,
-          letterSpacing: '-0.03em',
-          color: 'var(--ink)',
-        }}
-      >
-        <span
-          style={{
-            fontFamily: 'var(--font-body)',
-            fontSize: 16,
-            fontWeight: 500,
-            background: 'var(--accent)',
-            color: 'var(--accent-ink)',
-            padding: '2px 8px',
-          }}
-        >
-          {slug}
-        </span>
-      </h1>
+      {tabs.map((t) => {
+        const isActive = active === t.key;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => onSelect(t.key)}
+            disabled={t.empty}
+            style={{
+              padding: '10px 16px',
+              fontSize: 11,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: t.empty ? 'var(--ink-dimmer)' : isActive ? 'var(--accent)' : 'var(--ink-dim)',
+              background: 'transparent',
+              border: 'none',
+              cursor: t.empty ? 'not-allowed' : 'pointer',
+              borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+              fontWeight: isActive ? 600 : 400,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'color 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              if (t.empty || isActive) return;
+              e.currentTarget.style.color = 'var(--ink)';
+            }}
+            onMouseLeave={(e) => {
+              if (t.empty || isActive) return;
+              e.currentTarget.style.color = 'var(--ink-dim)';
+            }}
+          >
+            {isActive && <span style={{ color: 'var(--accent)' }}>▸</span>}
+            {t.label}
+            <span
+              style={{
+                color: t.empty
+                  ? 'var(--ink-dimmer)'
+                  : isActive
+                    ? 'var(--accent)'
+                    : 'var(--ink-dimmer)',
+                fontWeight: 400,
+                letterSpacing: '0.08em',
+                fontStyle: t.empty ? 'italic' : 'normal',
+                fontSize: t.empty ? 9 : 11,
+              }}
+            >
+              {t.empty ? 'not present' : formatBytes(t.size)}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-function BuildArchiveView({ slug, archive }: { slug: string; archive: BuildArchive | null }) {
-  if (!archive) return <ErrorState />;
+/* ────────────────────────────── content body ────────────────────────────── */
+
+function ContentBody({ body, empty }: { body: string; empty?: boolean }) {
+  return (
+    <div
+      className="markdown-body"
+      style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '22px 30px 32px',
+        color: 'var(--ink)',
+        fontSize: 13,
+        lineHeight: 1.6,
+        minHeight: 0,
+      }}
+    >
+      {empty ? (
+        <p style={{ fontSize: 12, color: 'var(--ink-dimmer)', fontStyle: 'italic' }}>
+          (file not present in this archive)
+        </p>
+      ) : (
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {body}
+        </ReactMarkdown>
+      )}
+    </div>
+  );
+}
+
+/* ────────────────────────────── per-archive views ────────────────────────────── */
+
+function BuildArchiveView({
+  slug,
+  archive,
+  mtime,
+  tab,
+  onTab,
+}: {
+  slug: string;
+  archive: BuildArchive | null;
+  mtime: number;
+  tab: BuildTab;
+  onTab: (t: BuildTab) => void;
+}) {
+  if (!archive) return <ErrorState message="failed to load archive." />;
+
+  // Agent presence inferred from file presence — the implicit "who ran" signal
+  // without a DB lookup. Empty file content (still present as empty string)
+  // counts as a presence; missing files are sometimes empty-string anyway in
+  // the BuildArchive shape, so we treat any non-empty body as positive evidence.
+  const hasPlan = archive.plan.trim().length > 0;
+  const hasBuildLog = archive.buildLog.trim().length > 0;
+  const hasBuildFeedback = archive.buildFeedback.trim().length > 0;
+
+  const tabs: { key: BuildTab; label: string; size: number; empty: boolean }[] = [
+    { key: 'plan',           label: 'Plan.md',           size: bytesOf(archive.plan),          empty: !hasPlan },
+    { key: 'buildLog',       label: 'Build-Log.md',      size: bytesOf(archive.buildLog),      empty: !hasBuildLog },
+    { key: 'buildFeedback',  label: 'Build-Feedback.md', size: bytesOf(archive.buildFeedback), empty: !hasBuildFeedback },
+  ];
+
+  const activeBody =
+    tab === 'plan' ? archive.plan :
+    tab === 'buildLog' ? archive.buildLog :
+    archive.buildFeedback;
+  const activeEmpty =
+    tab === 'plan' ? !hasPlan :
+    tab === 'buildLog' ? !hasBuildLog :
+    !hasBuildFeedback;
+
   return (
     <>
-      <ArchiveHeader slug={slug} kind="build" sublabel={`Build-History/${slug}/`} />
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '22px 26px 32px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 18,
-        }}
-      >
-        <ArchiveSection label="Plan.md" body={archive.plan} />
-        <ArchiveSection label="Build-Log.md" body={archive.buildLog} />
-        <ArchiveSection label="Build-Feedback.md" body={archive.buildFeedback} />
-      </div>
+      <MetadataStrip
+        slug={slug}
+        kind="build"
+        mtime={mtime}
+        agents={{ claude: hasPlan, gemini: hasBuildLog, codex: hasBuildFeedback }}
+      />
+      <TabStrip tabs={tabs} active={tab} onSelect={onTab} />
+      <ContentBody body={activeBody} empty={activeEmpty} />
     </>
   );
 }
@@ -442,78 +821,37 @@ function BuildArchiveView({ slug, archive }: { slug: string; archive: BuildArchi
 function DiscussionArchiveView({
   slug,
   archive,
+  mtime,
 }: {
   slug: string;
   archive: DiscussionArchive | null;
+  mtime: number;
 }) {
-  if (!archive) return <ErrorState />;
+  if (!archive) return <ErrorState message="failed to load archive." />;
+  const hasWarzone = archive.warzone.trim().length > 0;
+  // Discussion archives are 3-way debates by definition — claude / gemini /
+  // codex all participated. Show all three chips when the warzone file has
+  // content; show none when it's empty.
+  const agents = hasWarzone
+    ? { claude: true, gemini: true, codex: true }
+    : { claude: false, gemini: false, codex: false };
+
   return (
     <>
-      <ArchiveHeader slug={slug} kind="discussion" sublabel={`WarZone-History/${slug}/WarZone.md`} />
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '22px 26px 32px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 18,
-        }}
-      >
-        <ArchiveSection label="WarZone.md" body={archive.warzone} />
-      </div>
+      <MetadataStrip slug={slug} kind="discussion" mtime={mtime} agents={agents} />
+      <TabStrip
+        tabs={[
+          {
+            key: 'warzone' as const,
+            label: 'WarZone.md',
+            size: bytesOf(archive.warzone),
+            empty: !hasWarzone,
+          },
+        ]}
+        active="warzone"
+        onSelect={() => { /* single tab — no selection state needed */ }}
+      />
+      <ContentBody body={archive.warzone} empty={!hasWarzone} />
     </>
-  );
-}
-
-function ArchiveSection({ label, body }: { label: string; body: string }) {
-  const [open, setOpen] = useState(true);
-  const isEmpty = !body.trim();
-  return (
-    <Panel
-      headLabel={label}
-      headRight={isEmpty ? 'not present' : open ? 'expanded' : 'collapsed'}
-    >
-      <div style={{ padding: 0 }}>
-        <button
-          onClick={() => setOpen((v) => !v)}
-          style={{
-            display: 'block',
-            width: '100%',
-            textAlign: 'left',
-            padding: '10px 22px',
-            fontSize: 10,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--ink-dim)',
-            cursor: 'pointer',
-            borderBottom: open && !isEmpty ? '1px dashed var(--rule)' : 'none',
-          }}
-        >
-          {open ? '▾' : '▸'} toggle {label}
-        </button>
-        {open && (
-          <div
-            className="markdown-body"
-            style={{
-              padding: '16px 22px 22px',
-              color: 'var(--ink)',
-              fontSize: 13,
-              lineHeight: 1.6,
-            }}
-          >
-            {isEmpty ? (
-              <p style={{ fontSize: 12, color: 'var(--ink-dimmer)', fontStyle: 'italic' }}>
-                (file not present in this archive)
-              </p>
-            ) : (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {body}
-              </ReactMarkdown>
-            )}
-          </div>
-        )}
-      </div>
-    </Panel>
   );
 }

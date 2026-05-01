@@ -14,7 +14,7 @@ export function Panel({
   fill,
 }: {
   headLabel: string;
-  headRight?: string;
+  headRight?: ReactNode;
   children: ReactNode;
   fill?: boolean;
 }) {
@@ -76,18 +76,24 @@ export function ActionButton({
   warn?: boolean;
   disabled?: boolean;
 }) {
-  const bg = disabled ? 'transparent' : primary ? 'var(--accent)' : 'transparent';
-  const color = disabled
-    ? 'var(--ink-dimmer)'
-    : primary
-      ? 'var(--accent-ink)'
+  // Primary keeps its lime fill even when disabled (just dimmed via opacity)
+  // so the user still reads it as a button — important when the button is the
+  // only call-to-action in a panel and going transparent would make it
+  // disappear into the background.
+  const bg = primary
+    ? 'var(--accent)'
+    : 'transparent';
+  const color = primary
+    ? 'var(--accent-ink)'
+    : disabled
+      ? 'var(--ink-dimmer)'
       : warn
         ? 'var(--warn)'
         : 'var(--ink)';
-  const border = disabled
-    ? '1px solid var(--rule)'
-    : primary
-      ? '1px solid var(--accent)'
+  const border = primary
+    ? '1px solid var(--accent)'
+    : disabled
+      ? '1px solid var(--rule)'
       : warn
         ? '1px solid var(--warn)'
         : '1px solid var(--rule)';
@@ -104,11 +110,12 @@ export function ActionButton({
         fontWeight: primary ? 600 : 500,
         letterSpacing: '0.05em',
         cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+        opacity: disabled ? 0.5 : 1,
+        transition: 'background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s',
       }}
       onMouseEnter={(e) => {
         if (disabled) return;
-        if (primary) e.currentTarget.style.background = '#d9ff66';
+        if (primary) e.currentTarget.style.background = 'var(--accent-hover)';
         else {
           e.currentTarget.style.borderColor = warn ? 'var(--warn)' : 'var(--accent)';
           e.currentTarget.style.color = warn ? 'var(--warn)' : 'var(--accent)';

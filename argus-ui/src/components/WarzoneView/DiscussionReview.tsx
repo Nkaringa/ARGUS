@@ -234,15 +234,22 @@ function AgentColumn({
     <section
       style={{
         border: `1px solid ${isActive ? cfg.color : 'var(--rule)'}`,
-        background: 'var(--bg-2)',
+        // Active column gets the same colored-glow halo as the pipeline strip's
+        // active step — agent identity color in border + outer halo. Done columns
+        // get a subtle accent-tint so they read as "sealed and complete."
+        boxShadow: isActive
+          ? `0 0 18px -2px ${cfg.color}, 0 0 4px -1px ${cfg.color}`
+          : 'none',
+        background: isDone ? 'var(--accent-tint-soft)' : 'var(--bg-2)',
         display: 'flex',
         flexDirection: 'column',
         minWidth: 0,
         // Cap column height so long agent output scrolls WITHIN the column instead
-        // of stretching the page vertically. 65vh leaves breadcrumbs + hero + pipeline
-        // visible above and idea input visible below on typical screens.
+        // of stretching the page vertically. 65vh leaves the hero + pipeline
+        // visible above on typical screens.
         height: '65vh',
         maxHeight: '65vh',
+        transition: 'border-color 0.2s, box-shadow 0.25s, background 0.2s',
       }}
     >
       <header

@@ -9,7 +9,7 @@ const fs = require('fs');
 const { connectNATS, subscribe } = require('../core/events');
 const { startWatcher } = require('../core/watcher');
 const { startWorkflow, submitTask, sendApproval, getState, setBroadcast } = require('../workflows/build');
-const { getHistory, sweepStaleRunningTasks, logEvent } = require('../core/db');
+const { getHistory, getHistoryCount, getTaskDetail, sweepStaleRunningTasks, logEvent } = require('../core/db');
 const { corsMiddleware, authMiddleware, wsAuth } = require('../core/auth');
 const { ensureRoleDocs } = require('../core/role-docs');
 const { listProjectFolders, listBuildHistory, readBuildHistory, isValidTaskSlug, buildFileTree } = require('../core/archive');
@@ -234,8 +234,41 @@ app.get('/state', (req, res) => {
     res.json(getState());
 });
 
+// GET /history — paginated, filterable task history for the /logs page.
+//   ?limit=20            (1..100, defaults to 20)
+//   ?offset=0
+//   ?search=keyword      matches description (LIKE %keyword%)
+//   ?status=DONE,ABORTED comma-separated, OR-within-category
+//   ?grade=A,B,NONE      comma-separated, OR-within-category, NONE matches NULL
+// Returns { items, total } so the UI can hide "load more" when caught up.
+// No-arg behavior preserved (latest 20, no filters) for backward compat with
+// any caller still hitting the bare endpoint.
 app.get('/history', (req, res) => {
-    res.json(getHistory());
+    const parseList = (v) =>
+        typeof v === 'string'
+            ? v.split(',').map((s) => s.trim()).filter(Boolean)
+            : [];
+    const opts = {
+        limit:  Number(req.query.limit)  || 20,
+        offset: Number(req.query.offset) || 0,
+        search: typeof req.query.search === 'string' ? req.query.search : '',
+        status: parseList(req.query.status),
+        grade:  parseList(req.query.grade),
+    };
+    res.json({ items: getHistory(opts), total: getHistoryCount(opts) });
+});
+
+// GET /tasks/:id/detail — aggregated event metadata for one task. Powers the
+// click-to-expand row on /logs. Lazy-fetched per row on first expand; result
+// is small (a few KB at most). Returns 404 for unknown task ids.
+app.get('/tasks/:id/detail', (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id < 1) {
+        return res.status(400).json({ error: 'invalid task id' });
+    }
+    const detail = getTaskDetail(id);
+    if (!detail) return res.status(404).json({ error: 'task not found' });
+    res.json(detail);
 });
 
 (async () => {
@@ -248,8 +281,18 @@ app.get('/history', (req, res) => {
 
     subscribe('build.output', (payload) => {
         const entry = { agent: payload.agent, line: payload.line };
-        logBuffer.push(entry);
-        if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
+        // Only buffer lines while a task is in flight. Lines that arrive after
+        // state has moved to idle/done are straggler stdout from an agent that
+        // hasn't fully exited yet (SIGTERM grace period, helper subprocesses
+        // still flushing). Live clients still receive the broadcast — they
+        // wanted to see the death throes — but the replay buffer stays clean
+        // so a fresh client (page refresh) doesn't see stale audit output
+        // attributed to a task that was already aborted/sealed.
+        const { state } = getState();
+        if (state !== 'idle' && state !== 'done') {
+            logBuffer.push(entry);
+            if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
+        }
         broadcast({ type: 'output', ...entry });
     });
 

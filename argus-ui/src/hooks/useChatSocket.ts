@@ -30,14 +30,17 @@ export function useChatSocket() {
           null;
         if (!setter) return;
         setter((prev) => {
-          // Append to last agent bubble if it already exists, else create new
+          // Append to last agent bubble if it already exists, else create new.
+          // Timestamp on append-mode is preserved (the bubble started streaming
+          // when the first chunk arrived); new bubbles get a fresh Date.now().
           if (prev.length > 0 && prev[prev.length - 1].role === 'agent') {
+            const last = prev[prev.length - 1];
             return [
               ...prev.slice(0, -1),
-              { role: 'agent', text: prev[prev.length - 1].text + '\n' + msg.line },
+              { role: 'agent', text: last.text + '\n' + msg.line, ts: last.ts },
             ];
           }
-          return [...prev, { role: 'agent', text: msg.line }];
+          return [...prev, { role: 'agent', text: msg.line, ts: Date.now() }];
         });
       }
     };
@@ -81,7 +84,7 @@ export function useChatSocket() {
       agent === 'builder' ? geminiMessagesRef.current :
       agent === 'planner' ? claudeMessagesRef.current :
       codexMessagesRef.current;
-    setter((prev) => [...prev, { role: 'user', text: prompt }]);
+    setter((prev) => [...prev, { role: 'user', text: prompt, ts: Date.now() }]);
 
     const res = await fetch(`${SERVERS.chat.http}/chat`, {
       method: 'POST',
@@ -94,5 +97,15 @@ export function useChatSocket() {
     }
   }, []);
 
-  return { geminiMessages, claudeMessages, codexMessages, sendMessage };
+  // Wipe one agent's thread. No backend touch — chat history is purely UI
+  // state. The agent CLIs are stateless one-shots; the next prompt simply
+  // goes without prior context. Per-agent scope: clearing claude doesn't
+  // affect gemini or codex.
+  const clearMessages = useCallback((agent: AgentKey) => {
+    if (agent === 'builder')        setGeminiMessages([]);
+    else if (agent === 'planner')   setClaudeMessages([]);
+    else if (agent === 'codex_auditor') setCodexMessages([]);
+  }, []);
+
+  return { geminiMessages, claudeMessages, codexMessages, sendMessage, clearMessages };
 }

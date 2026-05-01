@@ -84,10 +84,165 @@ function completeTask(id, iterations, grade, status) {
     updateTask.run(new Date().toISOString(), iterations, grade, status, id);
 }
 
-function getHistory(limit = 20) {
+// Build the WHERE clause + parameter list for filtered history queries.
+// Used by both getHistory (rows) and getHistoryCount (total). Returns
+// `{ sql, params }` where sql includes the leading "WHERE ..." or empty string.
+// Filters compose as AND across categories, OR within a category (multi-value
+// fields like status/grade are passed as arrays and expand to IN (?, ?, ...)).
+function buildHistoryWhere({ search, status, grade } = {}) {
+    const clauses = [];
+    const params = [];
+    if (search && typeof search === 'string' && search.trim()) {
+        clauses.push('description LIKE ?');
+        params.push('%' + search.trim() + '%');
+    }
+    if (Array.isArray(status) && status.length > 0) {
+        clauses.push(`UPPER(status) IN (${status.map(() => '?').join(', ')})`);
+        params.push(...status.map((s) => String(s).toUpperCase()));
+    }
+    if (Array.isArray(grade) && grade.length > 0) {
+        // grade is stored as 'A' | 'B' | 'C' | 'F' | NULL. Caller can pass
+        // 'NONE' to match NULL (the "no grade yet" filter).
+        const concrete = grade.filter((g) => g && String(g).toUpperCase() !== 'NONE');
+        const wantsNone = grade.some((g) => String(g).toUpperCase() === 'NONE');
+        const sub = [];
+        if (concrete.length > 0) {
+            sub.push(`UPPER(final_grade) IN (${concrete.map(() => '?').join(', ')})`);
+            params.push(...concrete.map((g) => String(g).toUpperCase()));
+        }
+        if (wantsNone) sub.push('final_grade IS NULL');
+        if (sub.length > 0) clauses.push('(' + sub.join(' OR ') + ')');
+    }
+    return clauses.length === 0 ? { sql: '', params } : { sql: 'WHERE ' + clauses.join(' AND '), params };
+}
+
+// Read tasks for the /logs page. Optional `opts` for filter + pagination —
+// callers without opts (the build server's WS-snapshot) get the prior default
+// behavior (latest 20). Returns rows including completed_at so the UI can show
+// wall-time per row.
+function getHistory(opts = {}) {
+    if (typeof opts === 'number') opts = { limit: opts }; // back-compat for getHistory(20)
+    const limit  = Math.max(1, Math.min(100, Number.isFinite(opts.limit)  ? opts.limit  : 20));
+    const offset = Math.max(0,           Number.isFinite(opts.offset) ? opts.offset : 0);
+    const where = buildHistoryWhere(opts);
     return db.prepare(
-        'SELECT id, description, status, iterations, created_at, final_grade AS grade FROM tasks ORDER BY id DESC LIMIT ?'
-    ).all(limit);
+        `SELECT id, description, status, iterations, created_at, completed_at, final_grade AS grade
+         FROM tasks
+         ${where.sql}
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?`
+    ).all(...where.params, limit, offset);
+}
+
+// Total row count for the same filter set — drives the UI's "load more"
+// affordance (button hides when items.length >= total).
+function getHistoryCount(opts = {}) {
+    const where = buildHistoryWhere(opts);
+    const row = db.prepare(`SELECT COUNT(*) AS n FROM tasks ${where.sql}`).get(...where.params);
+    return row ? row.n : 0;
+}
+
+// Aggregate the rich detail for a single task by reading its events table
+// rows. Powers the click-to-expand row on /logs. Output shape:
+//   {
+//     slug, mode, autoApprove, autoApproveCap, planReview,
+//     iterations: [{ iteration, role, durationMs, exitCode, grade?, postSize?, bytesAppended? }],
+//     gradeTrail: [{ iteration, grade }],     // chronological per grade.received
+//     agentTotals: { claude: ms, gemini: ms, codex: ms },
+//     files: [{ name, sizeBytes, role }],
+//     failures: [{ iteration?, role, error }],
+//     truncated: boolean                       // true if event scan hit the 1000 cap
+//   }
+const DETAIL_EVENT_CAP = 1000;
+function getTaskDetail(taskId) {
+    if (!Number.isFinite(taskId)) return null;
+    const events = db.prepare(
+        `SELECT topic, payload FROM events
+         WHERE task_id = ?
+         ORDER BY id ASC
+         LIMIT ?`
+    ).all(taskId, DETAIL_EVENT_CAP + 1);
+    const truncated = events.length > DETAIL_EVENT_CAP;
+    const scan = events.slice(0, DETAIL_EVENT_CAP);
+
+    let slug = null, mode = null, autoApprove = false, autoApproveCap = null, planReview = false;
+    const gradeTrail = [];
+    const agentTotals = { claude: 0, gemini: 0, codex: 0 };
+    const filesByRole = new Map(); // role → { name, sizeBytes }
+    const failures = [];
+
+    // Two event topics both carry "agent completion" semantics:
+    //   - agent.completed                    → workflow-emitted phase completion
+    //                                          (role, iteration, title, bytes_appended, post_size)
+    //   - <pipeline>.agent.completed         → agent-runner-emitted process exit
+    //                                          (agent, role, durationMs, exitCode)
+    // We need both: post_size for the FILES section, durationMs for the AGENT
+    // BREAKDOWN. The branch below distinguishes by which fields the payload
+    // carries, so a single switch case handles both topic shapes uniformly.
+    const isAgentCompleted = (topic) =>
+        topic === 'agent.completed' ||
+        topic === 'build.agent.completed' ||
+        topic === 'warzone.agent.completed' ||
+        topic === 'chat.agent.completed';
+    const isAgentFailed = (topic) =>
+        topic === 'agent.failed' ||
+        topic === 'build.agent.failed' ||
+        topic === 'warzone.agent.failed' ||
+        topic === 'chat.agent.failed';
+
+    for (const ev of scan) {
+        let p;
+        try { p = JSON.parse(ev.payload); } catch { continue; }
+        if (ev.topic === 'task.submitted') {
+            if (p.slug !== undefined) slug = p.slug;
+            if (p.mode !== undefined) mode = p.mode;
+            if (p.auto_approve !== undefined) autoApprove = !!p.auto_approve;
+            if (p.auto_approve_cap !== undefined) autoApproveCap = p.auto_approve_cap;
+            if (p.plan_review !== undefined) planReview = !!p.plan_review;
+        } else if (isAgentCompleted(ev.topic)) {
+            // Sum process-exit durations into per-agent totals. The agent
+            // field carries the CLI tool's display name ("Claude" / "Gemini"
+            // / "Codex"), capitalized; lowercase to match our totals keys.
+            if (Number.isFinite(p.durationMs)) {
+                const agent = String(p.agent || '').toLowerCase();
+                if (agent === 'claude' || agent === 'gemini' || agent === 'codex') {
+                    agentTotals[agent] += p.durationMs;
+                }
+            }
+            // Track file sizes from workflow phase-complete events. Maps the
+            // agent's role to its canonical meta file; latest write wins.
+            if (p.post_size !== undefined && p.role) {
+                const r = String(p.role).toLowerCase();
+                const fileName =
+                    r === 'plan'  ? `${slug || 'task'}-Plan.md` :
+                    r === 'build' ? `${slug || 'task'}-Build-Log.md` :
+                    r === 'audit' ? `${slug || 'task'}-Build-Feedback.md` : null;
+                if (fileName) filesByRole.set(r, { name: fileName, sizeBytes: p.post_size, role: r });
+            }
+        } else if (ev.topic === 'grade.received') {
+            if (Number.isFinite(p.iteration) && typeof p.grade === 'string') {
+                gradeTrail.push({ iteration: p.iteration, grade: p.grade.toUpperCase() });
+            }
+        } else if (isAgentFailed(ev.topic)) {
+            failures.push({
+                role: p.role || null,
+                error: p.error || p.reason || null,
+            });
+        }
+    }
+
+    return {
+        slug,
+        mode,
+        autoApprove,
+        autoApproveCap,
+        planReview,
+        gradeTrail,
+        agentTotals,
+        files: Array.from(filesByRole.values()),
+        failures,
+        truncated,
+    };
 }
 
 // Mark any task still in RUNNING state as STALE. Run on hermes boot — RUNNING
@@ -103,4 +258,4 @@ function sweepStaleRunningTasks() {
     return result.changes;
 }
 
-module.exports = { logEvent, createTask, completeTask, getHistory, sweepStaleRunningTasks };
+module.exports = { logEvent, createTask, completeTask, getHistory, getHistoryCount, getTaskDetail, sweepStaleRunningTasks };

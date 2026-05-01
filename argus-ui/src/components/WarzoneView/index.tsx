@@ -9,10 +9,26 @@ interface WarzoneViewProps {
   slug: string | null;
   lines: OutputLine[];
   droppedLineCount: number;
+  stageStartedAt: number;
   onSubmit: (idea: string) => void;
   onApprove: () => void;
   onAbort: () => void;
   onNewDiscussion: () => void;
+}
+
+// Maps active state → agent identity color, used by HeroCard's inline "<agent>
+// is debating" block and by the PipelineStrip's per-step active glow.
+const AGENT_FOR_STATE: Partial<Record<WarzoneState, { agent: string; agentColor: string; description: string }>> = {
+  discussing_claude: { agent: 'claude', agentColor: 'var(--claude)', description: 'framing the idea · slug + plan' },
+  discussing_gemini: { agent: 'gemini', agentColor: 'var(--gemini)', description: 'proposing build approach · stack & steps' },
+  discussing_codex:  { agent: 'codex',  agentColor: 'var(--codex)',  description: 'auditing both takes · poking holes' },
+};
+
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
 }
 
 const STATE_ORDER: WarzoneState[] = [
@@ -41,40 +57,8 @@ function stateIndex(s: WarzoneState): number {
   return i < 0 ? 0 : i;
 }
 
-/* ────────────────────────────── breadcrumbs ────────────────────────────── */
-
-function Breadcrumbs({ slug }: { slug: string | null }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14,
-        paddingBottom: 14,
-        borderBottom: '1px dashed var(--rule)',
-        fontSize: 11,
-        color: 'var(--ink-dimmer)',
-        letterSpacing: '0.06em',
-        flexWrap: 'wrap',
-      }}
-    >
-      <span style={{ color: 'var(--ink)' }}>work</span>
-      <span style={{ color: 'var(--rule-hot)' }}>/</span>
-      <span style={{ color: 'var(--accent)' }}>warzone</span>
-      {slug && (
-        <>
-          <span style={{ color: 'var(--rule-hot)' }}>·</span>
-          <span>
-            discussion <span style={{ color: 'var(--ink)' }}>{slug}</span>
-          </span>
-        </>
-      )}
-      <span style={{ color: 'var(--ink-dim)', fontSize: 10, marginLeft: 'auto' }}>
-        ws <b style={{ color: 'var(--accent)', fontWeight: 500 }}>3003</b> connected
-      </span>
-    </div>
-  );
-}
+/* Breadcrumbs deleted — section is in the sidebar's active item, slug lives in
+   the hero, ws status is implementation noise. */
 
 /* ────────────────────────────── hero card ────────────────────────────── */
 
@@ -82,12 +66,14 @@ function HeroCard({
   state,
   slug,
   idea,
+  stageStartedAt,
   onNewDiscussion,
   canStartNewDiscussion,
 }: {
   state: WarzoneState;
   slug: string | null;
   idea: string | null;
+  stageStartedAt: number;
   onNewDiscussion: () => void;
   canStartNewDiscussion: boolean;
 }) {
@@ -96,42 +82,39 @@ function HeroCard({
     state === 'awaiting_discuss_approval' ? 'awaiting review' :
     state.replace(/_/g, ' ');
 
-  // Right column (flow + new-discussion button) shows whenever we have a slug,
-  // regardless of whether there's a fresh idea. After approval, idea is cleared
-  // but slug persists — and that's exactly when the user wants the button visible
-  // to archive the current topic and start a new one.
-  const showRightCol = !!slug || !!idea;
+  // Live elapsed counter — re-renders the hero once per second while a round
+  // is in flight. Cleanly stops the interval for idle / awaiting-approval.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!['discussing_claude', 'discussing_gemini', 'discussing_codex'].includes(state)) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [state]);
+
+  const stageCfg = AGENT_FOR_STATE[state];
 
   return (
     <section
       style={{
-        marginTop: 20,
         border: '1px solid var(--rule)',
         background: 'var(--bg-2)',
-        display: 'grid',
-        gridTemplateColumns: showRightCol ? '1fr auto' : '1fr',
-        gap: 0,
+        display: 'flex',
+        alignItems: 'stretch',
+        gap: 24,
+        padding: '22px 26px',
+        minHeight: 0,
       }}
     >
-      <div style={{ padding: '22px 26px' }}>
-        <div
-          style={{
-            fontSize: 10,
-            letterSpacing: '0.18em',
-            color: 'var(--ink-dimmer)',
-            textTransform: 'uppercase',
-          }}
-        >
-          // discussion state: <b style={{ color: 'var(--accent)', fontWeight: 500 }}>{stateLabel}</b>
-        </div>
+      {/* Left column — slug + idea + (when a round is live) inline agent block. */}
+      <div style={{ flex: 1, minWidth: 0 }}>
         <h1
           style={{
             fontFamily: 'var(--font-display)',
-            fontSize: 'clamp(32px, 4.8vw, 56px)',
+            fontSize: 'clamp(28px, 4vw, 44px)',
             fontWeight: 500,
             lineHeight: 1,
             letterSpacing: '-0.03em',
-            marginTop: 10,
+            margin: 0,
             display: 'flex',
             alignItems: 'baseline',
             gap: 16,
@@ -158,7 +141,7 @@ function HeroCard({
         {idea && (
           <p
             style={{
-              marginTop: 16,
+              marginTop: 14,
               fontSize: 13,
               color: 'var(--ink)',
               lineHeight: 1.55,
@@ -168,68 +151,121 @@ function HeroCard({
             <span style={{ color: 'var(--ink-dim)' }}>$ idea →</span> {idea}
           </p>
         )}
-      </div>
 
-      {showRightCol && (
-        <div
-          style={{
-            borderLeft: '1px solid var(--rule)',
-            padding: '22px 26px',
-            minWidth: 220,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: 14,
-          }}
-        >
-          <div>
+        {/* Inline "<agent> is debating" block — only renders during a working
+            state (discussing_claude / _gemini / _codex). Agent identity color
+            on the name; static pulse-dot meta line above. */}
+        {stageCfg && (
+          <div
+            style={{
+              marginTop: 18,
+              paddingTop: 14,
+              borderTop: '1px dashed var(--rule)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
             <div
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
                 fontSize: 10,
-                letterSpacing: '0.14em',
+                letterSpacing: '0.16em',
                 color: 'var(--ink-dimmer)',
                 textTransform: 'uppercase',
               }}
             >
-              flow
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  background: 'var(--accent)',
+                  borderRadius: '50%',
+                  animation: 'pulse 1.4s ease-in-out infinite',
+                }}
+              />
+              {stageCfg.agent} :: {stageCfg.description}
             </div>
             <div
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 18,
+                fontSize: 28,
                 fontWeight: 500,
-                color: 'var(--ink)',
-                marginTop: 4,
+                lineHeight: 1.05,
+                letterSpacing: '-0.03em',
               }}
             >
-              sequential
+              <span style={{ color: stageCfg.agentColor }}>{stageCfg.agent}</span>{' '}
+              <span style={{ color: 'var(--ink)' }}>is debating</span>
             </div>
           </div>
-          <button
-            onClick={onNewDiscussion}
-            disabled={!canStartNewDiscussion}
+        )}
+      </div>
+
+      {/* Right column — state tag + started-ago anchor at the top, the
+          ↻ new-discussion action anchored at the bottom (with a small caption
+          above so the user knows what it does). The flex gap fills the middle. */}
+      <div
+        style={{
+          width: 260,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+          alignItems: 'stretch',
+        }}
+      >
+        {/* TOP — state tag + started-ago. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+          <span
             style={{
               fontSize: 10,
-              fontWeight: 500,
-              letterSpacing: '0.14em',
+              letterSpacing: '0.18em',
+              color: 'var(--ink-dimmer)',
               textTransform: 'uppercase',
-              color: canStartNewDiscussion ? 'var(--ink)' : 'var(--ink-dimmer)',
-              background: 'transparent',
-              border: `1px solid ${canStartNewDiscussion ? 'var(--rule)' : 'var(--rule-hot)'}`,
-              padding: '8px 12px',
-              cursor: canStartNewDiscussion ? 'pointer' : 'not-allowed',
-              transition: 'color 0.15s, border-color 0.15s',
+              whiteSpace: 'nowrap',
             }}
-            onMouseEnter={(e) => {
-              if (!canStartNewDiscussion) return;
-              e.currentTarget.style.color = 'var(--accent)';
-              e.currentTarget.style.borderColor = 'var(--accent)';
+          >
+            // discussion state: <b style={{ color: 'var(--accent)', fontWeight: 500 }}>{stateLabel}</b>
+          </span>
+          {state !== 'idle' && (
+            <span
+              style={{
+                fontSize: 10,
+                letterSpacing: '0.12em',
+                color: 'var(--ink-dimmer)',
+                textTransform: 'uppercase',
+              }}
+            >
+              started <b style={{ color: 'var(--ink-dim)', fontWeight: 500 }}>{formatElapsed(now - stageStartedAt)}</b> ago
+            </span>
+          )}
+        </div>
+
+        {/* BOTTOM — caption + ↻ new-discussion. margin-top: auto pushes the
+            group to the bottom edge of the hero so it lives where the user
+            looks for "what can I do next." Lime fill matches the input panel's
+            primary submit button so the user reads it as a real action. */}
+        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+          <span
+            style={{
+              fontSize: 9,
+              letterSpacing: '0.14em',
+              color: 'var(--ink-dimmer)',
+              textTransform: 'uppercase',
+              lineHeight: 1.3,
+              textAlign: 'right',
+              maxWidth: 220,
             }}
-            onMouseLeave={(e) => {
-              if (!canStartNewDiscussion) return;
-              e.currentTarget.style.color = 'var(--ink)';
-              e.currentTarget.style.borderColor = 'var(--rule)';
-            }}
+          >
+            archive this topic &amp; start fresh
+          </span>
+          <button
+            type="button"
+            onClick={onNewDiscussion}
+            disabled={!canStartNewDiscussion}
             title={
               !slug
                 ? 'no active discussion to archive — submit one first'
@@ -237,16 +273,44 @@ function HeroCard({
                   ? 'wait for the current round to finish'
                   : 'archive this discussion and start a new topic'
             }
+            style={{
+              padding: '8px 14px',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--accent-ink)',
+              background: 'var(--accent)',
+              border: 'none',
+              cursor: canStartNewDiscussion ? 'pointer' : 'not-allowed',
+              opacity: canStartNewDiscussion ? 1 : 0.5,
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              if (canStartNewDiscussion) e.currentTarget.style.background = 'var(--accent-hover)';
+            }}
+            onMouseLeave={(e) => {
+              if (canStartNewDiscussion) e.currentTarget.style.background = 'var(--accent)';
+            }}
           >
             ↻ new discussion
           </button>
         </div>
-      )}
+      </div>
     </section>
   );
 }
 
 /* ────────────────────────────── pipeline strip ────────────────────────────── */
+
+// Glow color when a step is active. claude/gemini/codex use their identity
+// colors (already on step.agentColor). "review" is human-driven, so warn (red)
+// to read as "your turn."
+function activeGlow(step: typeof PIPELINE_STEPS[number]): string {
+  if (step.agentColor) return step.agentColor;
+  if (step.key === 'review') return 'var(--warn)';
+  return 'var(--accent)';
+}
 
 function PipelineStrip({ state }: { state: WarzoneState }) {
   const currentIdx = stateIndex(state);
@@ -256,7 +320,7 @@ function PipelineStrip({ state }: { state: WarzoneState }) {
         marginTop: 18,
         border: '1px solid var(--rule)',
         background: 'var(--bg-2)',
-        padding: '22px 26px',
+        padding: '18px 22px',
       }}
     >
       <div
@@ -268,7 +332,7 @@ function PipelineStrip({ state }: { state: WarzoneState }) {
           letterSpacing: '0.16em',
           color: 'var(--ink-dimmer)',
           textTransform: 'uppercase',
-          marginBottom: 18,
+          marginBottom: 14,
         }}
       >
         <span style={{ color: 'var(--rule-hot)', letterSpacing: 0 }}>┌──</span>
@@ -277,7 +341,10 @@ function PipelineStrip({ state }: { state: WarzoneState }) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr auto 1fr auto 1fr auto 1fr',
+          // Production-equivalent layout (4 cards + 3 arrows). Trailing 40px
+          // empty column gives a tiny right-edge breath so the strip doesn't
+          // bleed into its own border — feels less crowded than full-fill.
+          gridTemplateColumns: '1fr auto 1fr auto 1fr auto 1fr 40px',
           gap: 12,
           alignItems: 'stretch',
         }}
@@ -287,36 +354,51 @@ function PipelineStrip({ state }: { state: WarzoneState }) {
           const done = currentIdx > stepIdx;
           const active = step.matchStates.includes(state);
 
-          const borderColor = active ? 'var(--accent)' : done ? 'var(--accent-dim)' : 'var(--rule-hot)';
-          const background = active
-            ? 'rgba(196,255,61,0.08)'
-            : done
-              ? 'rgba(196,255,61,0.03)'
-              : 'var(--bg-3)';
-          const stageColor = active ? 'var(--accent)' : done ? 'var(--accent-dim)' : 'var(--ink-dimmer)';
-          const whoColor = step.agentColor
-            ? active
-              ? step.agentColor
-              : done
-                ? 'var(--ink)'
-                : 'var(--ink-dim)'
-            : active
-              ? 'var(--accent)'
-              : done
-                ? 'var(--ink)'
-                : 'var(--ink-dim)';
+          // ACTIVE: agent-color glow (transparent bg + colored border + outer
+          // halo). DONE: sunken accent-tint-soft + ✓. QUEUED: dashed faint.
+          let stepBg: string;
+          let stepBorder: string;
+          let stageColor: string;
+          let stepGlow = 'none';
+          let stepBorderStyle: 'solid' | 'dashed' = 'solid';
+          let stepOpacity = 1;
+
+          if (active) {
+            const glow = activeGlow(step);
+            stepBg = 'transparent';
+            stepBorder = glow;
+            stageColor = glow;
+            stepGlow = `0 0 18px -2px ${glow}, 0 0 4px -1px ${glow}`;
+          } else if (done) {
+            stepBg = 'var(--accent-tint-soft)';
+            stepBorder = 'var(--accent-dim)';
+            stageColor = 'var(--accent-dim)';
+          } else {
+            stepBg = 'transparent';
+            stepBorder = 'var(--rule)';
+            stageColor = 'var(--ink-dimmer)';
+            stepBorderStyle = 'dashed';
+            stepOpacity = 0.6;
+          }
+
+          // Agent identity color on the .who name regardless of state — eye
+          // reads "this is gemini" before it reads "this is the active step."
+          const whoColor = step.agentColor || (active ? activeGlow(step) : 'var(--ink-dim)');
 
           return (
             <Fragment key={step.key}>
               <div
                 style={{
-                  border: `1px solid ${borderColor}`,
-                  boxShadow: active ? 'inset 0 0 0 1px var(--accent)' : 'none',
+                  border: `1px ${stepBorderStyle} ${stepBorder}`,
                   padding: '14px 16px',
-                  background,
+                  background: stepBg,
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 6,
+                  boxShadow: stepGlow,
+                  opacity: stepOpacity,
+                  zIndex: active ? 2 : 1,
+                  transition: 'background 0.2s, border-color 0.2s, box-shadow 0.25s',
                 }}
               >
                 <span
@@ -328,7 +410,12 @@ function PipelineStrip({ state }: { state: WarzoneState }) {
                   }}
                 >
                   [{String(i + 1).padStart(2, '0')}] {step.label}
-                  {active ? ' · active' : done ? ' · done' : ' · queued'}
+                  {active ? ' · active' : done ? (
+                    <>
+                      {' · done '}
+                      <span style={{ color: 'var(--accent-dim)' }}>✓</span>
+                    </>
+                  ) : ' · queued'}
                 </span>
                 <span
                   style={{
@@ -347,7 +434,10 @@ function PipelineStrip({ state }: { state: WarzoneState }) {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    color: active || done ? 'var(--accent)' : 'var(--rule-hot)',
+                    justifyContent: 'center',
+                    color: done ? 'var(--accent-dim)' : active ? 'var(--accent)' : 'var(--rule-hot)',
+                    fontSize: 14,
+                    opacity: done || active ? 1 : 0.5,
                   }}
                 >
                   ──▶
@@ -600,6 +690,7 @@ export function WarzoneView({
   slug,
   lines,
   droppedLineCount,
+  stageStartedAt,
   onSubmit,
   onApprove,
   onAbort,
@@ -625,15 +716,27 @@ export function WarzoneView({
         color: 'var(--ink)',
       }}
     >
-      <Breadcrumbs slug={slug} />
-
-      <HeroCard
-        state={state}
-        slug={slug}
-        idea={idea}
-        onNewDiscussion={onNewDiscussion}
-        canStartNewDiscussion={canStartNewDiscussion}
-      />
+      {/* Top row — idea input on the left, hero on the right. Same logic as
+          the build view's top-row: the user's input is what they're hunting
+          for ("where do I submit?"), put it where eyes land first. */}
+      <section
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 18,
+          alignItems: 'start',
+        }}
+      >
+        <IdeaInputPanel state={state} slug={slug} onSubmit={onSubmit} />
+        <HeroCard
+          state={state}
+          slug={slug}
+          idea={idea}
+          stageStartedAt={stageStartedAt}
+          onNewDiscussion={onNewDiscussion}
+          canStartNewDiscussion={canStartNewDiscussion}
+        />
+      </section>
 
       <PipelineStrip state={state} />
 
@@ -659,17 +762,14 @@ export function WarzoneView({
         </div>
       )}
 
-      {/* Raw log — collapsible peek under the hood, only while busy */}
+      {/* Raw log — collapsible peek under the hood, only while busy. Defaults
+          closed; debug affordance for when the discussion-review panel is
+          empty and the user wants to see "what is the agent actually doing." */}
       {busy && lines.length > 0 && (
         <div style={{ marginTop: 18 }}>
           <OutputStream lines={lines} droppedLineCount={droppedLineCount} />
         </div>
       )}
-
-      {/* Idea input — always at the bottom when user can act */}
-      <div style={{ marginTop: 18 }}>
-        <IdeaInputPanel state={state} slug={slug} onSubmit={onSubmit} />
-      </div>
     </div>
   );
 }

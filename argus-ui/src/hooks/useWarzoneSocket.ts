@@ -11,6 +11,10 @@ export function useWarzoneSocket() {
   const [slug, setSlug] = useState<string | null>(null);
   const [lines, setLines] = useState<OutputLine[]>([]);
   const [droppedLineCount, setDroppedLineCount] = useState(0);
+  // Wall-clock at the moment we entered the current state. Powers the hero's
+  // "started Xm Ys ago" timestamp. Resets on every state transition so the
+  // counter always reflects time-in-current-stage, not time-since-page-load.
+  const [stageStartedAt, setStageStartedAt] = useState<number>(() => Date.now());
   const wsRef = useRef<WebSocket | null>(null);
   const connectRef = useRef<() => void>(() => {});
   // Exponential backoff for reconnect — see useBuildSocket for rationale.
@@ -29,7 +33,10 @@ export function useWarzoneSocket() {
       const msg = JSON.parse(e.data);
 
       if (msg.type === 'state') {
-        setState(msg.state);
+        setState((prev) => {
+          if (prev !== msg.state) setStageStartedAt(Date.now());
+          return msg.state;
+        });
         if (msg.idea !== undefined) setIdea(msg.idea);
         if (msg.slug !== undefined) setSlug(msg.slug);
       }
@@ -121,5 +128,5 @@ export function useWarzoneSocket() {
     setDroppedLineCount(0);
   }, []);
 
-  return { state, idea, slug, lines, droppedLineCount, submitIdea, sendApproval, stop, newDiscussion };
+  return { state, idea, slug, lines, droppedLineCount, stageStartedAt, submitIdea, sendApproval, stop, newDiscussion };
 }
