@@ -29,6 +29,7 @@ interface BuildViewProps {
   onAbort: () => void;
   onApprovePlan: () => void;
   onRequestPlanChanges: (feedback: string) => void;
+  onStop: () => void;
 }
 
 /* ────────────────────────────── constants ────────────────────────────── */
@@ -78,6 +79,9 @@ const STATE_ORDER: BuildState[] = [
 
 /* ────────────────────────────── helpers ────────────────────────────── */
 
+// Format a millisecond duration as "Xm YYs" (or "Ys" under one minute).
+// Used by the hero's inline elapsed counter so the user sees "yes the build
+// is still making progress" without staring at an unmoving panel.
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(total / 60);
@@ -90,14 +94,52 @@ function stateIndex(s: BuildState): number {
   return i < 0 ? 0 : i;
 }
 
-/* ────────────────────────────── breadcrumbs ────────────────────────────── */
+/* ───────────────────── stop pipeline (inline) ───────────────────── */
 
-function Breadcrumbs({
-  slug,
+// Right-aligned stop button that lives between the hero card and pipeline
+// strip while a build is in flight. Was in the sidebar footer originally —
+// users routinely missed it because the bottom-left corner is invisible
+// during focused work. Lime fill + ■ glyph match the visual language of
+// the previous sidebar button, so users who knew the old one still
+// recognize it.
+function StopPipelineButton({ state, onStop }: { state: BuildState; onStop: () => void }) {
+  const busy = state !== 'idle' && state !== 'done';
+  if (!busy) return null;
+  return (
+    <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+      <button
+        onClick={onStop}
+        style={{
+          padding: '8px 16px',
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: 'var(--accent-ink)',
+          background: 'var(--accent)',
+          border: 'none',
+          cursor: 'pointer',
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-hover)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent)')}
+      >
+        ■ stop pipeline
+      </button>
+    </div>
+  );
+}
+
+/* ────────────────────────────── top controls ────────────────────────────── */
+
+// Slim chrome row above the hero. Holds only the view-mode toggle, right-aligned.
+// The breadcrumb trail (work / build · slug · ws) was removed: section is shown
+// in the sidebar's active item, slug is the giant pill in the hero, and ws state
+// is implementation noise the user can't act on.
+function TopControls({
   viewMode,
   onViewModeChange,
 }: {
-  slug: string | null;
   viewMode: ViewMode;
   onViewModeChange: (m: ViewMode) => void;
 }) {
@@ -106,29 +148,9 @@ function Breadcrumbs({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 14,
-        paddingBottom: 14,
-        borderBottom: '1px dashed var(--rule)',
-        fontSize: 11,
-        color: 'var(--ink-dimmer)',
-        letterSpacing: '0.06em',
-        flexWrap: 'wrap',
+        paddingBottom: 4,
       }}
     >
-      <span style={{ color: 'var(--ink)' }}>work</span>
-      <span style={{ color: 'var(--rule-hot)' }}>/</span>
-      <span style={{ color: 'var(--accent)' }}>build</span>
-      {slug && (
-        <>
-          <span style={{ color: 'var(--rule-hot)' }}>·</span>
-          <span>
-            slug <span style={{ color: 'var(--ink)' }}>{slug}</span>
-          </span>
-        </>
-      )}
-      <span style={{ color: 'var(--ink-dim)', fontSize: 10, marginLeft: 'auto' }}>
-        ws <b style={{ color: 'var(--accent)', fontWeight: 500 }}>3002</b> connected
-      </span>
       <ViewModeToggle value={viewMode} onChange={onViewModeChange} />
     </div>
   );
@@ -187,54 +209,73 @@ function ViewModeToggle({
 
 /* ────────────────────────────── hero card ────────────────────────────── */
 
+// Hero is now the "where am I + what's the pipeline doing" anchor. Two-column:
+//   left  — slug pill + task description + (when an agent is running) the
+//           inline active-stage line "agent is working" with its meta dot
+//   right — pipeline-state tag + nested last-audit panel
+// The right rail of iteration / mode / watcher was removed (iteration lives in
+// the pipeline header, mode is implicit in the slug, watcher is implementation).
 function HeroCard({
   state,
   slug,
   task,
   iteration,
+  grade,
+  stageStartedAt,
 }: {
   state: BuildState;
   slug: string | null;
   task: string | null;
   iteration: number;
+  grade?: string;
+  stageStartedAt: number;
 }) {
+  // Live elapsed counter — re-renders the hero once per second while an agent
+  // is running so the user sees the build is making progress. Only ticks for
+  // working states; idle/done/awaiting cleanly stops the interval.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!['planning', 'building', 'auditing'].includes(state)) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [state]);
+
   const stateLabel =
-    state === 'idle' ? 'ready for a task' :
+    state === 'idle' ? 'ready' :
     state === 'done' ? 'complete' :
     state === 'paused' ? 'paused' :
     state === 'awaiting_approval' ? 'awaiting review' :
+    state === 'awaiting_plan_review' ? 'awaiting plan review' :
     state;
+
+  // STAGE_CONFIG holds the working-state agent + description; pull the active
+  // entry to render the "agent is working" line inline. Decision/idle/done
+  // states fall through to no inline activity (the action panel below handles
+  // those flows).
+  const stageCfg = STAGE_CONFIG[state];
 
   return (
     <section
       style={{
-        marginTop: 20,
         border: '1px solid var(--rule)',
         background: 'var(--bg-2)',
-        display: 'grid',
-        gridTemplateColumns: task ? '1fr auto' : '1fr',
-        gap: 0,
+        display: 'flex',
+        alignItems: 'stretch',
+        gap: 24,
+        padding: '22px 26px',
+        minHeight: 0,
       }}
     >
-      <div style={{ padding: '22px 26px' }}>
-        <div
-          style={{
-            fontSize: 10,
-            letterSpacing: '0.18em',
-            color: 'var(--ink-dimmer)',
-            textTransform: 'uppercase',
-          }}
-        >
-          // pipeline state: <b style={{ color: 'var(--accent)', fontWeight: 500 }}>{stateLabel}</b>
-        </div>
+      {/* Left column — slug + task + (running) agent-status block */}
+      <div style={{ flex: 1, minWidth: 0 }}>
         <h1
           style={{
             fontFamily: 'var(--font-display)',
-            fontSize: 'clamp(32px, 4.8vw, 56px)',
+            fontSize: 'clamp(28px, 4vw, 44px)',
             fontWeight: 500,
             lineHeight: 1,
             letterSpacing: '-0.03em',
-            marginTop: 10,
+            margin: 0,
             display: 'flex',
             alignItems: 'baseline',
             gap: 16,
@@ -261,7 +302,7 @@ function HeroCard({
         {task && (
           <p
             style={{
-              marginTop: 16,
+              marginTop: 14,
               fontSize: 13,
               color: 'var(--ink)',
               lineHeight: 1.55,
@@ -271,60 +312,186 @@ function HeroCard({
             <span style={{ color: 'var(--ink-dim)' }}>$ task →</span> {task}
           </p>
         )}
+
+        {/* Inline active-stage block — replaces the standalone Active Stage panel
+            for the working states (planning/building/auditing). Decision states
+            (awaiting_approval/paused/awaiting_plan_review) get a separate panel
+            below the pipeline strip; this section only renders the "agent is
+            working" headline. */}
+        {stageCfg && (
+          <div
+            style={{
+              marginTop: 18,
+              paddingTop: 14,
+              borderTop: '1px dashed var(--rule)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                fontSize: 10,
+                letterSpacing: '0.16em',
+                color: 'var(--ink-dimmer)',
+                textTransform: 'uppercase',
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  background: 'var(--accent)',
+                  borderRadius: '50%',
+                  animation: 'pulse 1.4s ease-in-out infinite',
+                }}
+              />
+              {stageCfg.agent} :: {stageCfg.description}
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 28,
+                fontWeight: 500,
+                lineHeight: 1.05,
+                letterSpacing: '-0.03em',
+              }}
+            >
+              <span style={{ color: stageCfg.agentColor }}>{stageCfg.agent}</span>{' '}
+              <span style={{ color: 'var(--ink)' }}>is working</span>
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 36,
+                fontWeight: 500,
+                fontVariantNumeric: 'tabular-nums',
+                letterSpacing: '-0.02em',
+                color: 'var(--warn)',
+                lineHeight: 1,
+                marginTop: 4,
+              }}
+            >
+              {formatElapsed(now - stageStartedAt)}
+            </div>
+          </div>
+        )}
       </div>
 
-      {task && (
-        <div
+      {/* Right column — pipeline state tag (top) + nested last-audit panel.
+          Width fixed at 260px so the left column gets enough room for the slug
+          pill + task description. */}
+      <div
+        style={{
+          width: 260,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+          alignItems: 'stretch',
+        }}
+      >
+        <span
           style={{
-            borderLeft: '1px solid var(--rule)',
-            padding: '22px 26px',
-            minWidth: 220,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: 14,
+            alignSelf: 'flex-end',
+            fontSize: 10,
+            letterSpacing: '0.18em',
+            color: 'var(--ink-dimmer)',
+            textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
           }}
         >
-          <MetaBlock label="iteration" value={iteration > 0 ? String(iteration) : '—'} />
-          <MetaBlock label="mode" value={iteration > 0 ? 'revision' : 'new'} mono />
-          <MetaBlock label="watcher" value="● chokidar armed" lime />
-        </div>
-      )}
+          // pipeline state: <b style={{ color: 'var(--accent)', fontWeight: 500 }}>{stateLabel}</b>
+        </span>
+        <HeroAuditPanel grade={grade} iteration={iteration} />
+      </div>
     </section>
   );
 }
 
-function MetaBlock({ label, value, lime, mono }: { label: string; value: string; lime?: boolean; mono?: boolean }) {
+// Compact last-audit nested panel. Same data as the (now-deleted) standalone
+// LastAudit, sized down (56px grade vs 84px) so it fits the 260px hero column.
+function HeroAuditPanel({ grade, iteration }: { grade?: string; iteration: number }) {
   return (
-    <div>
+    <Panel
+      headLabel="last audit"
+      headRight={grade ? `iter ${iteration} · codex` : 'no audit yet'}
+    >
       <div
         style={{
-          fontSize: 10,
-          letterSpacing: '0.14em',
-          color: 'var(--ink-dimmer)',
-          textTransform: 'uppercase',
+          padding: '14px 16px',
+          display: 'grid',
+          gridTemplateColumns: 'auto 1fr',
+          gap: 16,
+          alignItems: 'center',
         }}
       >
-        {label}
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 56,
+            fontWeight: 500,
+            lineHeight: 0.8,
+            letterSpacing: '-0.06em',
+            color: grade === 'A' ? 'var(--accent)' : grade ? 'var(--ink)' : 'var(--ink-dimmer)',
+          }}
+        >
+          {grade ?? '—'}
+        </div>
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              letterSpacing: '0.14em',
+              color: 'var(--ink-dimmer)',
+              textTransform: 'uppercase',
+              marginBottom: 4,
+            }}
+          >
+            grade
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--ink)', marginBottom: 8 }}>
+            {grade === 'A'
+              ? 'A · no revisions requested'
+              : grade
+                ? `${grade} · codex flagged issues`
+                : 'audit runs after build-log.md'}
+          </div>
+          <div
+            style={{
+              fontSize: 10,
+              letterSpacing: '0.14em',
+              color: 'var(--ink-dimmer)',
+              textTransform: 'uppercase',
+              marginBottom: 4,
+            }}
+          >
+            iteration
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--ink-dim)' }}>
+            {iteration > 0 ? iteration : '—'}
+          </div>
+        </div>
       </div>
-      <div
-        style={{
-          fontFamily: mono ? 'var(--font-body)' : 'var(--font-display)',
-          fontSize: mono ? 14 : 18,
-          fontWeight: 500,
-          color: lime ? 'var(--accent)' : 'var(--ink)',
-          marginTop: 4,
-        }}
-      >
-        {value}
-      </div>
-    </div>
+    </Panel>
   );
 }
 
 /* ────────────────────────────── pipeline strip ────────────────────────────── */
 
-function PipelineStrip({ state }: { state: BuildState }) {
+// Glow color when a step is active. claude/gemini/codex use their identity
+// colors (already on the step.agentColor field). "review" is human-driven, so
+// uses warn (red) to read as "your turn"; "done" is hermes archiving, lime.
+function activeGlow(step: typeof PIPELINE_STEPS[number]): string {
+  if (step.agentColor) return step.agentColor;
+  if (step.key === 'review') return 'var(--warn)';
+  return 'var(--accent)';
+}
+
+function PipelineStrip({ state, iteration }: { state: BuildState; iteration: number }) {
   const currentIdx = stateIndex(state);
   return (
     <section
@@ -332,9 +499,11 @@ function PipelineStrip({ state }: { state: BuildState }) {
         marginTop: 18,
         border: '1px solid var(--rule)',
         background: 'var(--bg-2)',
-        padding: '22px 26px',
+        padding: '18px 22px',
       }}
     >
+      {/* Header — pipeline label left, iteration N right. The iter-N marker
+          relocated here from the (deleted) Active Stage panel head. */}
       <div
         style={{
           display: 'flex',
@@ -344,17 +513,35 @@ function PipelineStrip({ state }: { state: BuildState }) {
           letterSpacing: '0.16em',
           color: 'var(--ink-dimmer)',
           textTransform: 'uppercase',
-          marginBottom: 18,
+          marginBottom: 14,
         }}
       >
         <span style={{ color: 'var(--rule-hot)', letterSpacing: 0 }}>┌──</span>
         pipeline · plan → build → audit → review → done
+        <span style={{ marginLeft: 'auto', color: 'var(--ink-dim)' }}>
+          iteration{' '}
+          <b style={{ color: 'var(--ink)', fontWeight: 500 }}>
+            {iteration > 0 ? iteration : '—'}
+          </b>
+        </span>
       </div>
+
+      {/* Strip — boxes carry agent identity. ACTIVE: transparent bg + agent-color
+          border + outer glow in agent color (claude orange / gemini blue / codex
+          purple / you red / hermes lime). DONE: sunken accent-tint-soft + ✓.
+          QUEUED: dashed faint outline. */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr auto 1fr auto 1fr auto 1fr auto 1fr',
-          gap: 12,
+          gridTemplateColumns: PIPELINE_STEPS.map((step) =>
+            (step.matchStates.includes(state) ||
+              (state === 'paused' && step.key === 'build'))
+              ? '1.25fr auto'
+              : '1fr auto'
+          )
+            .join(' ')
+            .replace(/auto$/, ''),
+          gap: 6,
           alignItems: 'stretch',
         }}
       >
@@ -365,32 +552,51 @@ function PipelineStrip({ state }: { state: BuildState }) {
             step.matchStates.includes(state) ||
             (state === 'paused' && step.key === 'build');
 
-          const borderColor = active ? 'var(--accent)' : done ? 'var(--accent-dim)' : 'var(--rule-hot)';
-          const background = active ? 'rgba(196,255,61,0.08)' : done ? 'rgba(196,255,61,0.03)' : 'var(--bg-3)';
-          const stageColor = active ? 'var(--accent)' : done ? 'var(--accent-dim)' : 'var(--ink-dimmer)';
-          const whoColor = step.agentColor
-            ? active
-              ? step.agentColor
-              : done
-                ? 'var(--ink)'
-                : 'var(--ink-dim)'
-            : active
-              ? 'var(--accent)'
-              : done
-                ? 'var(--ink)'
-                : 'var(--ink-dim)';
+          // ACTIVE styling now uses the agent's identity color for border, glow,
+          // stage label, and the agent name itself. Background stays transparent
+          // so the colored glow + colored border do the visual work without
+          // burying agent identity under a solid lime fill.
+          let stepBg: string;
+          let stepBorder: string;
+          let stageColor: string;
+          let whoColor: string;
+          let stepGlow = 'none';
+          let stageOpacity = 1;
+
+          if (active) {
+            const glow = activeGlow(step);
+            stepBg = 'transparent';
+            stepBorder = glow;
+            stageColor = glow;
+            whoColor = glow;
+            stepGlow = `0 0 18px -2px ${glow}, 0 0 4px -1px ${glow}`;
+          } else if (done) {
+            stepBg = 'var(--accent-tint-soft)';
+            stepBorder = 'var(--accent-dim)';
+            stageColor = 'var(--accent-dim)';
+            whoColor = step.agentColor || 'var(--ink)';
+          } else {
+            stepBg = 'transparent';
+            stepBorder = 'var(--rule)';
+            stageColor = 'var(--ink-dimmer)';
+            whoColor = step.agentColor || 'var(--ink-dim)';
+            stageOpacity = 0.6;
+          }
 
           return (
             <Fragment key={step.key}>
               <div
                 style={{
-                  border: `1px solid ${borderColor}`,
-                  boxShadow: active ? 'inset 0 0 0 1px var(--accent)' : 'none',
-                  padding: '14px 16px',
-                  background,
+                  border: `1px ${active || done ? 'solid' : 'dashed'} ${stepBorder}`,
+                  padding: '7px 11px',
+                  background: stepBg,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 6,
+                  gap: 3,
+                  boxShadow: stepGlow,
+                  zIndex: active ? 2 : 1,
+                  opacity: stageOpacity,
+                  transition: 'background 0.2s, border-color 0.2s, box-shadow 0.25s',
                 }}
               >
                 <span
@@ -402,12 +608,17 @@ function PipelineStrip({ state }: { state: BuildState }) {
                   }}
                 >
                   [{String(i + 1).padStart(2, '0')}] {step.label}
-                  {active ? ' · active' : done ? ' · done' : ' · queued'}
+                  {active ? ' · active' : done ? (
+                    <>
+                      {' · done '}
+                      <span style={{ color: 'var(--accent-dim)' }}>✓</span>
+                    </>
+                  ) : ' · queued'}
                 </span>
                 <span
                   style={{
                     fontFamily: 'var(--font-display)',
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: 500,
                     color: whoColor,
                     letterSpacing: '-0.01em',
@@ -421,7 +632,10 @@ function PipelineStrip({ state }: { state: BuildState }) {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    color: active || done ? 'var(--accent)' : 'var(--rule-hot)',
+                    justifyContent: 'center',
+                    color: done ? 'var(--accent-dim)' : active ? 'var(--accent)' : 'var(--rule-hot)',
+                    fontSize: 14,
+                    opacity: done || active ? 1 : 0.5,
                   }}
                 >
                   ──▶
@@ -435,77 +649,22 @@ function PipelineStrip({ state }: { state: BuildState }) {
   );
 }
 
-/* ────────────────────────────── agent monitor ────────────────────────────── */
-
-function AgentMonitor({ state }: { state: BuildState }) {
-  const agents: { key: 'claude' | 'gemini' | 'codex'; role: string; activeState: BuildState; color: string }[] = [
-    { key: 'claude', role: 'planner', activeState: 'planning', color: 'var(--claude)' },
-    { key: 'gemini', role: 'builder', activeState: 'building', color: 'var(--gemini)' },
-    { key: 'codex',  role: 'auditor', activeState: 'auditing', color: 'var(--codex)'  },
-  ];
-  return (
-    <Panel headLabel="agent monitor" headRight="3 agents · role docs resumed">
-      {agents.map((a, i) => {
-        const isActive = state === a.activeState;
-        const queued = stateIndex(a.activeState) > stateIndex(state) && state !== 'idle' && state !== 'done';
-        const label = isActive ? a.activeState : queued ? 'queued' : 'idle';
-        return (
-          <div
-            key={a.key}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '10px 1fr auto',
-              gap: 14,
-              alignItems: 'center',
-              padding: '14px 18px',
-              borderBottom: i < agents.length - 1 ? '1px dashed var(--rule)' : 'none',
-            }}
-          >
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                background: isActive ? 'var(--accent)' : queued ? 'var(--ink-dim)' : 'var(--ink-dimmer)',
-                boxShadow: isActive ? '0 0 10px var(--accent)' : 'none',
-                animation: isActive ? 'pulse 1.4s ease-in-out infinite' : undefined,
-              }}
-            />
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 500, color: a.color }}>
-                {a.key}
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--ink-dim)', letterSpacing: '0.08em', marginTop: 2 }}>
-                [ {a.role} ]
-              </div>
-            </div>
-            <span
-              style={{
-                fontSize: 10,
-                letterSpacing: '0.16em',
-                textTransform: 'uppercase',
-                color: isActive ? 'var(--accent)' : 'var(--ink-dim)',
-                padding: '3px 8px',
-                border: `1px solid ${isActive ? 'var(--accent)' : 'var(--rule-hot)'}`,
-              }}
-            >
-              {label.replace(/_/g, ' ')}
-            </span>
-          </div>
-        );
-      })}
-    </Panel>
-  );
-}
+/* AgentMonitor removed — its info (per-agent state) is now read from the
+   pipeline strip with agent-color identity styling. The 3-agent panel is
+   redundant when the strip already shows claude / gemini / codex with their
+   identity colors and active/done/queued state. */
 
 /* ────────────────────────────── active stage ────────────────────────────── */
 
-function ActiveStage({
+// ActionPanel — renders only for states that need user action or carry a
+// distinct sealed-state read (decision required / paused / plan review /
+// done / idle). Working states (planning/building/auditing) return null
+// because the hero card now shows the inline "agent is working" line.
+function ActionPanel({
   state,
   iteration,
   grade,
   slug,
-  stageStartedAt,
   autoApprove,
   autoApproveCap,
   onApprove,
@@ -519,7 +678,6 @@ function ActiveStage({
   iteration: number;
   grade?: string;
   slug: string | null;
-  stageStartedAt: number;
   autoApprove: boolean;
   autoApproveCap: number;
   onApprove: () => void;
@@ -529,13 +687,6 @@ function ActiveStage({
   onApprovePlan: () => void;
   onRequestPlanChanges: (feedback: string) => void;
 }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!['planning', 'building', 'auditing'].includes(state)) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [state]);
-
   if (state === 'awaiting_plan_review') {
     return <PlanReviewPanel slug={slug} onApprove={onApprovePlan} onRequestChanges={onRequestPlanChanges} onAbort={onAbort} />;
   }
@@ -676,75 +827,9 @@ function ActiveStage({
     );
   }
 
-  const cfg = STAGE_CONFIG[state];
-  if (!cfg) return null;
-
-  const elapsedMs = now - stageStartedAt;
-  const elapsedSec = Math.floor(elapsedMs / 1000);
-  const overBudget = elapsedSec > cfg.expectedSec;
-
-  return (
-    <Panel headLabel="active stage" headRight={`// agent is working${iteration > 0 ? ` · iteration ${iteration}` : ''}`}>
-      <div style={{ padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            fontSize: 10,
-            letterSpacing: '0.16em',
-            color: 'var(--ink-dimmer)',
-            textTransform: 'uppercase',
-          }}
-        >
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              background: 'var(--accent)',
-              borderRadius: '50%',
-              animation: 'pulse 1.4s ease-in-out infinite',
-            }}
-          />
-          {cfg.agent} :: {cfg.description}
-        </div>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 500, lineHeight: 1, letterSpacing: '-0.03em' }}>
-          <span style={{ color: cfg.agentColor }}>{cfg.agent}</span>{' '}
-          <span style={{ color: 'var(--ink)' }}>is working</span>
-        </div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, auto)',
-            gap: 36,
-            paddingTop: 12,
-            borderTop: '1px dashed var(--rule)',
-            alignItems: 'baseline',
-          }}
-        >
-          <StatBlock label="elapsed" value={formatElapsed(elapsedMs)} lime={!overBudget} />
-          <StatBlock label="typical" value={`${cfg.expectedSec}s`} dim />
-          <StatBlock label="iteration" value={iteration > 0 ? String(iteration) : '1'} />
-          {overBudget && (
-            <div style={{ alignSelf: 'flex-end', paddingBottom: 4 }}>
-              <span
-                style={{
-                  fontSize: 10,
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  color: 'var(--warn)',
-                  padding: '4px 8px',
-                  border: '1px solid var(--warn)',
-                }}
-              >
-                ⚠ over budget
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    </Panel>
-  );
+  // Working states (planning/building/auditing) — no action panel needed,
+  // the hero card already shows the "<agent> is working" inline block.
+  return null;
 }
 
 /* ────────────────────────────── plan review ────────────────────────────── */
@@ -926,28 +1011,6 @@ function PlanReviewPanel({
   );
 }
 
-function StatBlock({ label, value, lime, dim }: { label: string; value: string; lime?: boolean; dim?: boolean }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10, letterSpacing: '0.16em', color: 'var(--ink-dimmer)', textTransform: 'uppercase', marginBottom: 6 }}>
-        {label}
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 28,
-          fontWeight: 500,
-          fontVariantNumeric: 'tabular-nums',
-          letterSpacing: '-0.02em',
-          color: lime ? 'var(--accent)' : dim ? 'var(--ink-dim)' : 'var(--ink)',
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
 /* ────────────────────────────── output stream ────────────────────────────── */
 
 function OutputStream({ lines, droppedLineCount }: { lines: OutputLine[]; droppedLineCount: number }) {
@@ -1042,7 +1105,6 @@ function OutputStream({ lines, droppedLineCount }: { lines: OutputLine[]; droppe
           )}
           {lines.length > 0 ? 'live · streaming' : 'idle'}
         </span>
-        <span>nats://localhost:4222 · subj build.output</span>
       </div>
     </Panel>
   );
@@ -1099,7 +1161,10 @@ function TaskInputPanel({
   return (
     <Panel headLabel="task queue" headRight={disabled ? 'runs after current build' : 'ready to submit'}>
       <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        {/* Project + Auto-Approve + Review-Plan packed in one row, with the
+            project selector on the left and toggle pills following. flex-wrap
+            lets the pills drop to a second line at narrow widths. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <label
             htmlFor="proj-sel"
             style={{
@@ -1130,87 +1195,40 @@ function TaskInputPanel({
               </option>
             ))}
           </select>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <label
-            htmlFor="auto-toggle"
-            style={{
-              fontSize: 10,
-              letterSpacing: '0.14em',
-              color: 'var(--ink-dimmer)',
-              textTransform: 'uppercase',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              cursor: disabled ? 'not-allowed' : 'pointer',
-            }}
-          >
-            <input
-              id="auto-toggle"
-              type="checkbox"
-              checked={autoOn}
-              onChange={(e) => setAutoOn(e.target.checked)}
-              disabled={disabled}
-            />
-            auto-approve revisions
-          </label>
+          {/* Review-Plan first so the optional `cap` input stays adjacent to
+              its owning Auto-Approve toggle (cap only renders when autoOn). */}
+          <TogglePill
+            on={planReviewOn}
+            disabled={disabled}
+            onChange={setPlanReviewOn}
+            label="Review-Plan"
+          />
+          <TogglePill
+            on={autoOn}
+            disabled={disabled}
+            onChange={setAutoOn}
+            label="Auto-Approve"
+          />
           {autoOn && (
-            <>
-              <label
-                htmlFor="auto-cap"
-                style={{
-                  fontSize: 10,
-                  letterSpacing: '0.14em',
-                  color: 'var(--ink-dimmer)',
-                  textTransform: 'uppercase',
-                }}
-              >
-                max iterations
-              </label>
-              <input
-                id="auto-cap"
-                type="number"
-                min={1}
-                max={20}
-                placeholder="10"
-                value={capInput}
-                onChange={(e) => setCapInput(e.target.value)}
-                disabled={disabled}
-                style={{
-                  width: 60,
-                  fontSize: 12,
-                  color: 'var(--ink)',
-                  background: 'var(--bg-3)',
-                  padding: '6px 10px',
-                  border: '1px solid var(--rule)',
-                }}
-              />
-            </>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <label
-            htmlFor="plan-review-toggle"
-            style={{
-              fontSize: 10,
-              letterSpacing: '0.14em',
-              color: 'var(--ink-dimmer)',
-              textTransform: 'uppercase',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              cursor: disabled ? 'not-allowed' : 'pointer',
-            }}
-          >
             <input
-              id="plan-review-toggle"
-              type="checkbox"
-              checked={planReviewOn}
-              onChange={(e) => setPlanReviewOn(e.target.checked)}
+              aria-label="max auto-approve iterations"
+              type="number"
+              min={1}
+              max={20}
+              placeholder="cap 10"
+              value={capInput}
+              onChange={(e) => setCapInput(e.target.value)}
               disabled={disabled}
+              style={{
+                width: 70,
+                fontSize: 11,
+                color: 'var(--ink)',
+                background: 'var(--bg-3)',
+                padding: '5px 8px',
+                border: '1px solid var(--rule)',
+              }}
             />
-            review plan before build
-          </label>
+          )}
         </div>
         <div
           style={{
@@ -1233,7 +1251,7 @@ function TaskInputPanel({
                 ? `describe the next change for ${continueSlug}...`
                 : 'describe what you want to build...'
             }
-            rows={3}
+            rows={6}
             disabled={disabled}
             style={{
               resize: 'none',
@@ -1265,140 +1283,61 @@ function TaskInputPanel({
   );
 }
 
-/* ────────────────────────────── last audit ────────────────────────────── */
-
-function LastAudit({ grade, iteration }: { grade?: string; iteration: number }) {
+// Toggle pill — replaces the native checkbox for the terminal aesthetic.
+// Off: rule border, ink-dim text. On: lime border + accent-tint fill +
+// solid lime indicator dot. Sized to sit inline with the project select.
+function TogglePill({
+  on,
+  disabled,
+  onChange,
+  label,
+}: {
+  on: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}) {
   return (
-    <Panel headLabel="last audit" headRight={grade ? `iter ${iteration} · codex` : 'no audit yet'}>
-      <div
-        style={{
-          padding: '22px 24px',
-          display: 'grid',
-          gridTemplateColumns: 'auto 1fr',
-          gap: 22,
-          alignItems: 'center',
-        }}
-      >
-        <div
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 84,
-            fontWeight: 500,
-            lineHeight: 0.8,
-            letterSpacing: '-0.06em',
-            color: grade === 'A' ? 'var(--accent)' : grade ? 'var(--ink)' : 'var(--ink-dimmer)',
-          }}
-        >
-          {grade ?? '—'}
-        </div>
-        <div>
-          <div
-            style={{
-              fontSize: 10,
-              letterSpacing: '0.14em',
-              color: 'var(--ink-dimmer)',
-              textTransform: 'uppercase',
-              marginBottom: 4,
-            }}
-          >
-            grade
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--ink)', marginBottom: 12 }}>
-            {grade === 'A'
-              ? 'A · no revisions requested'
-              : grade
-                ? `${grade} · codex flagged issues`
-                : 'audit runs after the builder emits build-log.md'}
-          </div>
-          <div
-            style={{
-              fontSize: 10,
-              letterSpacing: '0.14em',
-              color: 'var(--ink-dimmer)',
-              textTransform: 'uppercase',
-              marginBottom: 4,
-            }}
-          >
-            iteration
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--ink-dim)' }}>
-            {iteration > 0 ? iteration : '—'}
-          </div>
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-/* ────────────────────────────── task meta ────────────────────────────── */
-
-function TaskMeta({ slug, state, iteration }: { slug: string | null; state: BuildState; iteration: number }) {
-  const planDone = ['building', 'auditing', 'awaiting_approval', 'done', 'paused'].includes(state);
-  const buildDone = ['auditing', 'awaiting_approval', 'done'].includes(state);
-  const feedbackDone = ['awaiting_approval', 'done'].includes(state);
-
-  return (
-    <Panel headLabel="task meta" headRight="live from hermes">
-      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <MetaRow k="slug" v={slug ?? '—'} code />
-        <MetaRow k="iteration" v={iteration > 0 ? String(iteration) : '—'} />
-        <MetaRow
-          k="signals"
-          v={
-            <>
-              <Signal on={planDone}>plan</Signal>&nbsp;&nbsp;
-              <Signal on={buildDone}>build</Signal>&nbsp;&nbsp;
-              <Signal on={feedbackDone}>feedback</Signal>
-            </>
-          }
-        />
-        <MetaRow k="subject" v="build.output" code />
-        <MetaRow k="durability" v="sqlite WAL · replay" />
-      </div>
-    </Panel>
-  );
-}
-
-function MetaRow({ k, v, code }: { k: string; v: React.ReactNode; code?: boolean }) {
-  return (
-    <div
+    <button
+      type="button"
+      onClick={() => !disabled && onChange(!on)}
+      disabled={disabled}
       style={{
-        display: 'grid',
-        gridTemplateColumns: '110px 1fr',
-        gap: 12,
-        fontSize: 11.5,
-        paddingBottom: 10,
-        borderBottom: '1px dashed var(--rule)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '5px 12px',
+        border: `1px solid ${on ? 'var(--accent)' : 'var(--rule)'}`,
+        background: on ? 'var(--accent-tint)' : 'var(--bg-3)',
+        color: on ? 'var(--accent)' : 'var(--ink-dim)',
+        fontSize: 10,
+        fontWeight: 500,
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        transition: 'color 0.15s, border-color 0.15s, background 0.15s',
       }}
     >
-      <span style={{ color: 'var(--ink-dimmer)', letterSpacing: '0.08em' }}>{k}</span>
-      <span style={{ color: 'var(--ink)' }}>
-        {code ? (
-          <code
-            style={{
-              fontFamily: 'var(--font-body)',
-              background: 'var(--bg-3)',
-              padding: '1px 6px',
-              fontSize: 10.5,
-            }}
-          >
-            {v}
-          </code>
-        ) : (
-          v
-        )}
-      </span>
-    </div>
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          border: `1px solid ${on ? 'var(--accent)' : 'var(--ink-dimmer)'}`,
+          background: on ? 'var(--accent)' : 'transparent',
+          flexShrink: 0,
+          transition: 'background 0.15s, border-color 0.15s',
+        }}
+      />
+      {label}
+    </button>
   );
 }
 
-function Signal({ on, children }: { on: boolean; children: React.ReactNode }) {
-  return (
-    <span style={{ color: on ? 'var(--accent)' : 'var(--ink-dimmer)' }}>
-      {on ? '✓' : '○'} {children}
-    </span>
-  );
-}
+/* LastAudit relocated into HeroAuditPanel inside the hero card.
+   TaskMeta dropped — slug lives in the hero, iteration in the pipeline header,
+   signals are the pipeline strip itself, subject + durability are
+   implementation noise the user can't act on. */
 
 /* ────────────────────────────── main view ────────────────────────────── */
 
@@ -1421,6 +1360,7 @@ export function BuildView({
   onAbort,
   onApprovePlan,
   onRequestPlanChanges,
+  onStop,
 }: BuildViewProps) {
   // View mode toggle: pipeline (cockpit) vs workspace (file tree + preview split pane).
   // Local state — doesn't persist across tab switches. Selection lives here too so the
@@ -1441,62 +1381,102 @@ export function BuildView({
           minHeight: 0,
         }}
       >
-        <Breadcrumbs slug={slug} viewMode={viewMode} onViewModeChange={setViewMode} />
+        <TopControls viewMode={viewMode} onViewModeChange={setViewMode} />
 
         {/* Compact state strip so the user still sees pipeline progress while browsing files */}
-        <div style={{ marginTop: 18, flexShrink: 0 }}>
-          <PipelineStrip state={state} />
+        <div style={{ marginTop: 14, flexShrink: 0 }}>
+          <PipelineStrip state={state} iteration={iteration} />
         </div>
 
-        {/* Split pane: file tree on left, inline preview on right */}
+        {/* Split pane: file tree on left, inline preview on right. The file
+            browser owns its own header (filter / sort / pin), so the previous
+            <Panel fill headLabel="files"> wrapper is gone — the panel chrome
+            it provided was redundant with the new FileBrowser header. */}
         <section
           style={{
             marginTop: 18,
             flex: 1,
             minHeight: 0,
             display: 'grid',
-            gridTemplateColumns: '320px 1fr',
-            gap: 18,
+            gridTemplateColumns: '340px 1fr',
+            gap: 14,
           }}
         >
-          <Panel fill headLabel="files" headRight="work directory · live">
-            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-              <FileBrowser
-                onFileSelect={setSelectedFile}
-                externalSelectedFile={selectedFile}
-              />
-            </div>
-          </Panel>
+          <div
+            style={{
+              border: '1px solid var(--rule)',
+              background: 'var(--bg-2)',
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <FileBrowser
+              onFileSelect={setSelectedFile}
+              externalSelectedFile={selectedFile}
+              activeSlug={slug}
+            />
+          </div>
           <InlinePreview path={selectedFile} />
         </section>
       </div>
     );
   }
 
+  // Pipeline mode — task queue and hero share the top row so the input is
+  // visible immediately on page load (no scrolling past the pipeline + output
+  // to find where to submit a task). Hero contains slug + task + inline
+  // active-stage block + last-audit panel. Pipeline strip below. Action panel
+  // (decision/paused/plan-review) only renders when a state needs the user.
   return (
     <div
       style={{
         height: '100%',
         overflowY: 'auto',
-        padding: '18px 24px 32px',
+        padding: '14px 24px 32px',
         background: 'var(--bg)',
         color: 'var(--ink)',
       }}
     >
-      <Breadcrumbs slug={slug} viewMode={viewMode} onViewModeChange={setViewMode} />
+      <TopControls viewMode={viewMode} onViewModeChange={setViewMode} />
 
-      <HeroCard state={state} slug={slug} task={task} iteration={iteration} />
+      <section
+        style={{
+          marginTop: 14,
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 18,
+          alignItems: 'start',
+        }}
+      >
+        <TaskInputPanel state={state} projects={projects} onSubmit={onSubmit} />
+        <HeroCard
+          state={state}
+          slug={slug}
+          task={task}
+          iteration={iteration}
+          grade={grade}
+          stageStartedAt={stageStartedAt}
+        />
+      </section>
 
-      <PipelineStrip state={state} />
+      {/* Stop control — only shown while a build is in flight. Lives in the
+          gap between hero and pipeline so the user finds it inline with the
+          active stage they're already looking at, instead of hunting in the
+          sidebar's bottom-left corner. */}
+      <StopPipelineButton state={state} onStop={onStop} />
 
-      <section style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '340px 1fr', gap: 18 }}>
-        <AgentMonitor state={state} />
-        <ActiveStage
+      <PipelineStrip state={state} iteration={iteration} />
+
+      {/* ActionPanel renders null for working/idle/done states (hero handles
+          those). Renders an action panel for awaiting_plan_review,
+          awaiting_approval, and paused so the user can act. */}
+      <div style={{ marginTop: 18 }}>
+        <ActionPanel
           state={state}
           iteration={iteration}
           grade={grade}
           slug={slug}
-          stageStartedAt={stageStartedAt}
           autoApprove={autoApprove}
           autoApproveCap={autoApproveCap}
           onApprove={onApprove}
@@ -1506,17 +1486,11 @@ export function BuildView({
           onApprovePlan={onApprovePlan}
           onRequestPlanChanges={onRequestPlanChanges}
         />
-      </section>
+      </div>
 
       <div style={{ marginTop: 18 }}>
         <OutputStream lines={lines} droppedLineCount={droppedLineCount} />
       </div>
-
-      <section style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 1fr', gap: 18 }}>
-        <TaskInputPanel state={state} projects={projects} onSubmit={onSubmit} />
-        <LastAudit grade={grade} iteration={iteration} />
-        <TaskMeta slug={slug} state={state} iteration={iteration} />
-      </section>
     </div>
   );
 }

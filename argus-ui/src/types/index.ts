@@ -42,6 +42,9 @@ export interface OutputLine {
 export interface ChatMessage {
   role: 'user' | 'agent';
   text: string;
+  // Stamped client-side when the message is appended (user submit or first
+  // streamed chunk for an agent). Powers the "Xm ago" line under each message.
+  ts: number;
 }
 
 export interface HistoryItem {
@@ -51,6 +54,23 @@ export interface HistoryItem {
   grade: string | null;
   iterations: number;
   created_at: string;
+  completed_at: string | null;  // null while RUNNING; ISO timestamp once sealed
+}
+
+// Aggregated metadata for a single task — powers the click-to-expand row on
+// /logs. Fetched lazily via GET /tasks/:id/detail. The shape mirrors what
+// hermes/core/db.js#getTaskDetail produces.
+export interface TaskDetail {
+  slug: string | null;
+  mode: 'new' | 'continue' | null;
+  autoApprove: boolean;
+  autoApproveCap: number | null;
+  planReview: boolean;
+  gradeTrail: { iteration: number; grade: string }[];
+  agentTotals: { claude: number; gemini: number; codex: number };  // total durationMs per agent
+  files: { name: string; sizeBytes: number; role: string }[];
+  failures: { role: string | null; error: string | null }[];
+  truncated: boolean;  // true if event scan hit the 1000-event safety cap
 }
 
 export interface BuildSocketState {

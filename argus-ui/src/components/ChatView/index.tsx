@@ -10,6 +10,7 @@ interface ChatViewProps {
   agentLabel: string;
   messages: ChatMessage[];
   onSend: (agent: AgentKey, prompt: string) => void;
+  onClear: () => void;
 }
 
 // Per-agent color + role label. Matches the sidebar and the Build view so a user
@@ -20,30 +21,80 @@ const AGENT_META: Record<AgentKey, { key: 'claude' | 'gemini' | 'codex'; color: 
   codex_auditor:  { key: 'codex',  color: 'var(--codex)',  role: 'auditor' },
 };
 
-/* ────────────────────────────── breadcrumbs ────────────────────────────── */
+/* Breadcrumbs deleted — section is in the sidebar's active item, ws status
+   is implementation noise. */
 
-function Breadcrumbs({ agentKey }: { agentKey: string }) {
+// "Xm ago" / "2h ago" / "Apr 30" — short relative time for per-message stamps.
+function formatAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return `${Math.max(1, seconds)}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/* ────────────────────────────── thread headRight ────────────────────────────── */
+
+// Right-aligned content for the thread Panel's head: message count + clear
+// button. Two-click confirm pattern — first click flips to "confirm clear?"
+// in warn red for 3s, second click within the window calls onClearClick.
+// Disabled when the thread is empty (nothing to clear). The 3s timer + state
+// reset is owned by the parent ChatView so it can survive re-renders cleanly.
+function ThreadHeadRight({
+  messageCount,
+  confirming,
+  onClearClick,
+}: {
+  messageCount: number;
+  confirming: boolean;
+  onClearClick: () => void;
+}) {
+  const empty = messageCount === 0;
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14,
-        paddingBottom: 14,
-        borderBottom: '1px dashed var(--rule)',
-        fontSize: 11,
-        color: 'var(--ink-dimmer)',
-        letterSpacing: '0.06em',
-        flexWrap: 'wrap',
-      }}
-    >
-      <span style={{ color: 'var(--ink)' }}>chat</span>
-      <span style={{ color: 'var(--rule-hot)' }}>/</span>
-      <span style={{ color: 'var(--accent)' }}>{agentKey}</span>
-      <span style={{ color: 'var(--ink-dim)', fontSize: 10, marginLeft: 'auto' }}>
-        ws <b style={{ color: 'var(--accent)', fontWeight: 500 }}>3001</b> connected · direct — no pipeline
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ color: 'var(--ink-dim)', letterSpacing: '0.08em' }}>
+        {messageCount} message{messageCount === 1 ? '' : 's'}
       </span>
-    </div>
+      <button
+        type="button"
+        onClick={onClearClick}
+        disabled={empty}
+        title={empty ? 'nothing to clear' : confirming ? 'click again to confirm' : 'clear thread'}
+        style={{
+          // Solid warn-red fill (mirrors the lime "send" button visually but
+          // signals destructive). White text reads cleanly on both warn shades
+          // (dark-theme orange-red and light-theme deeper red).
+          padding: '4px 11px',
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: '#ffffff',
+          background: 'var(--warn)',
+          border: '1px solid var(--warn)',
+          cursor: empty ? 'not-allowed' : 'pointer',
+          opacity: empty ? 0.5 : 1,
+          transition: 'background 0.15s, opacity 0.15s, filter 0.15s',
+          fontFamily: 'inherit',
+          // Confirming state: slight brightness boost so the user can read
+          // the change in addition to the label flipping to "confirm clear?".
+          filter: confirming ? 'brightness(1.15)' : 'none',
+        }}
+        onMouseEnter={(e) => {
+          if (empty) return;
+          e.currentTarget.style.filter = 'brightness(1.15)';
+        }}
+        onMouseLeave={(e) => {
+          if (empty) return;
+          e.currentTarget.style.filter = confirming ? 'brightness(1.15)' : 'none';
+        }}
+      >
+        {confirming ? '⎌ confirm clear?' : '⎌ clear'}
+      </button>
+    </span>
   );
 }
 
@@ -150,13 +201,30 @@ function MessageBlock({
   role: string;
 }) {
   const isUser = message.role === 'user';
+  const [hovered, setHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard
+      .writeText(message.text)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 900);
+      })
+      .catch(() => { /* clipboard unavailable — silent */ });
+  };
+
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         padding: '18px 22px',
         borderBottom: '1px dashed var(--rule)',
+        position: 'relative',
       }}
     >
+      {/* Header — author + role tag. Timestamp is right-aligned via marginLeft auto. */}
       <div
         style={{
           display: 'flex',
@@ -188,7 +256,61 @@ function MessageBlock({
             [ {role} ]
           </span>
         )}
+        <span
+          style={{
+            marginLeft: 'auto',
+            fontSize: 10,
+            letterSpacing: '0.12em',
+            color: 'var(--ink-dimmer)',
+            textTransform: 'uppercase',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+          title={new Date(message.ts).toLocaleString()}
+        >
+          {formatAgo(message.ts)}
+        </span>
       </div>
+
+      {/* Hover copy button — sits in the top-right corner above the timestamp.
+          Visible on row hover only so it doesn't compete with the message
+          content in resting state. */}
+      {hovered && (
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label="copy message"
+          title="copy message"
+          style={{
+            position: 'absolute',
+            top: 14,
+            right: 18,
+            padding: '3px 8px',
+            fontSize: 10,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: copied ? 'var(--accent)' : 'var(--ink-dim)',
+            background: 'var(--bg-2)',
+            border: `1px solid ${copied ? 'var(--accent)' : 'var(--rule)'}`,
+            cursor: 'pointer',
+            transition: 'color 0.15s, border-color 0.15s',
+            fontFamily: 'inherit',
+          }}
+          onMouseEnter={(e) => {
+            if (copied) return;
+            e.currentTarget.style.color = 'var(--accent)';
+            e.currentTarget.style.borderColor = 'var(--accent)';
+          }}
+          onMouseLeave={(e) => {
+            if (copied) return;
+            e.currentTarget.style.color = 'var(--ink-dim)';
+            e.currentTarget.style.borderColor = 'var(--rule)';
+          }}
+        >
+          <span style={{ marginRight: 4 }}>{copied ? '✓' : '⎘'}</span>
+          {copied ? 'copied' : 'copy'}
+        </button>
+      )}
+
       {isUser ? (
         <p
           style={{
@@ -274,7 +396,7 @@ function EmptyState({
 
 /* ────────────────────────────── main view ────────────────────────────── */
 
-export function ChatView({ agent, agentLabel, messages, onSend }: ChatViewProps) {
+export function ChatView({ agent, agentLabel, messages, onSend, onClear }: ChatViewProps) {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const meta = AGENT_META[agent];
@@ -282,6 +404,39 @@ export function ChatView({ agent, agentLabel, messages, onSend }: ChatViewProps)
   const agentColor = meta.color;
 
   void agentLabel; // agentLabel is derived from agent.key now; retained for API symmetry.
+
+  // Two-click confirm for the clear-thread button. First click flips
+  // `confirming` true and arms a 3s revert timer. Second click within the
+  // window calls onClear; otherwise the timer reverts the button.
+  // Clears its own timer on unmount or when `confirming` resets, so a
+  // section-switch mid-confirm doesn't fire a stale revert.
+  const [confirming, setConfirming] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+  }, []);
+  // Reset confirm state when the user navigates away (agent change) — they'd
+  // expect a fresh two-click flow on the next thread, not a half-armed one.
+  useEffect(() => {
+    setConfirming(false);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+  }, [agent]);
+
+  const handleClearClick = () => {
+    if (messages.length === 0) return;
+    if (confirming) {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+      setConfirming(false);
+      onClear();
+      return;
+    }
+    setConfirming(true);
+    confirmTimerRef.current = setTimeout(() => {
+      setConfirming(false);
+      confirmTimerRef.current = null;
+    }, 3000);
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -313,8 +468,6 @@ export function ChatView({ agent, agentLabel, messages, onSend }: ChatViewProps)
         minHeight: 0,
       }}
     >
-      <Breadcrumbs agentKey={agentKey} />
-
       <HeroCard
         agentKey={agentKey}
         agentColor={agentColor}
@@ -328,7 +481,13 @@ export function ChatView({ agent, agentLabel, messages, onSend }: ChatViewProps)
         <Panel
           fill
           headLabel="thread"
-          headRight={`${messages.length} message${messages.length === 1 ? '' : 's'}`}
+          headRight={
+            <ThreadHeadRight
+              messageCount={messages.length}
+              confirming={confirming}
+              onClearClick={handleClearClick}
+            />
+          }
         >
           <div
             style={{

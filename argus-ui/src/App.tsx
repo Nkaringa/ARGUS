@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { Section } from './types';
 import { Sidebar } from './components/Layout/Sidebar';
-import { StatusBar } from './components/Layout/StatusBar';
 import { ChatView } from './components/ChatView';
 import { BuildView } from './components/BuildView';
 import { WarzoneView } from './components/WarzoneView';
@@ -18,24 +17,16 @@ export default function App() {
   const chat = useChatSocket();
   const warzone = useWarzoneSocket();
 
-  const handleStop = () => {
-    if (build.state !== 'idle' && build.state !== 'done') build.stop();
-    if (warzone.state !== 'idle') warzone.stop();
-  };
-
   return (
     <div
       className="flex flex-col"
       style={{ height: '100%', background: 'var(--bg)', color: 'var(--ink)' }}
     >
-      <StatusBar buildState={build.state} warzoneState={warzone.state} />
-
       <div
         className="flex"
         style={{
           flex: 1,
           minHeight: 0,
-          paddingTop: 'var(--statusbar-height)',
         }}
       >
         <Sidebar
@@ -43,7 +34,6 @@ export default function App() {
           onNavigate={setSection}
           buildState={build.state}
           warzoneState={warzone.state}
-          onStop={handleStop}
         />
 
         <main className="flex-1 min-w-0 overflow-hidden">
@@ -53,6 +43,7 @@ export default function App() {
               agentLabel="Gemini"
               messages={chat.geminiMessages}
               onSend={chat.sendMessage}
+              onClear={() => chat.clearMessages('builder')}
             />
           )}
           {section === 'chat-claude' && (
@@ -61,6 +52,7 @@ export default function App() {
               agentLabel="Claude"
               messages={chat.claudeMessages}
               onSend={chat.sendMessage}
+              onClear={() => chat.clearMessages('planner')}
             />
           )}
           {section === 'chat-codex' && (
@@ -69,6 +61,7 @@ export default function App() {
               agentLabel="Codex"
               messages={chat.codexMessages}
               onSend={chat.sendMessage}
+              onClear={() => chat.clearMessages('codex_auditor')}
             />
           )}
           {section === 'build' && (
@@ -91,6 +84,7 @@ export default function App() {
               onAbort={() => build.sendApproval('abort')}
               onApprovePlan={() => build.sendPlanReview('approve_plan')}
               onRequestPlanChanges={(feedback: string) => build.sendPlanReview('request_plan_changes', feedback)}
+              onStop={() => build.stop()}
             />
           )}
           {section === 'warzone' && (
@@ -100,13 +94,14 @@ export default function App() {
               slug={warzone.slug}
               lines={warzone.lines}
               droppedLineCount={warzone.droppedLineCount}
+              stageStartedAt={warzone.stageStartedAt}
               onSubmit={warzone.submitIdea}
               onApprove={() => warzone.sendApproval('approve')}
               onAbort={() => warzone.sendApproval('abort')}
               onNewDiscussion={warzone.newDiscussion}
             />
           )}
-          {section === 'logs' && <LogsView history={build.history} />}
+          {section === 'logs' && <LogsView />}
           {section === 'archive' && <HistoryView />}
         </main>
       </div>
