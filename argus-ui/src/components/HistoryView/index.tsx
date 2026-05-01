@@ -660,12 +660,6 @@ function AgentChip({ name, color }: { name: string; color: string }) {
 
 /* ────────────────────────────── tab strip ────────────────────────────── */
 
-interface TabSpec {
-  key: string;
-  label: string;
-  body: string;
-}
-
 function TabStrip<K extends string>({
   tabs,
   active,
