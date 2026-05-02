@@ -43,51 +43,40 @@ Argus uses [NATS](https://nats.io) as the pub/sub event bus between Hermes and t
 
 Verify with `nats-server --version`.
 
-### 3. Create your project folder
-
-Argus builds inside a **project folder** — not inside the argus clone itself. The simplest layout is a subdirectory of the argus clone:
-
-```bash
-# From the argus clone root
-mkdir Portfolio       # or any name you want — this is YOUR project
-```
-
-Your layout should now look like:
-
-```
-~/Desktop/Projects/argus/          ← the argus clone (the tool)
-├── .claude/   .gemini/   .codex/  ← role docs agents read
-├── hermes/                         ← engine (off limits to agents)
-├── argus-ui/                       ← dashboard (off limits to agents)
-└── Portfolio/                      ← YOUR project — WORK_DIR points here
-```
-
-**Why a separate folder?** Agents are scoped to `WORK_DIR`. If `WORK_DIR` is the argus clone root, agents see `argus-ui/` and `hermes/` as existing code and may build into them. Pointing at a fresh folder means agents only touch your project.
-
-**Project folder anywhere on disk works too.** Prefer keeping your project separate from the argus clone (e.g. argus in `~/Desktop/argus/`, your project in `~/Documents/Portfolio/`)? Set `WORK_DIR` to wherever your project lives — on first boot, Hermes copies the three role-doc folders (`.claude/`, `.gemini/`, `.codex/`) into it automatically.
-
-### 4. Configure `hermes/.env`
-
-Copy the template and set `WORK_DIR` to the absolute path of the project folder you created in step 3:
-
-```bash
-cp hermes/.env.example hermes/.env
-```
-
-```env
-WORK_DIR=/absolute/path/to/argus/Portfolio
-```
-
-That's the only required field. Everything else in `.env.example` has sensible defaults (ports, `CHAT_DIR`, auth, CORS). No session UUIDs to seed — each agent is invoked fresh per task, and prompts carry the full context the agent needs.
-
-### 5. Run
+### 3. Run
 
 ```bash
 # From the repo root
 npm run dev
 ```
 
-`npm run dev` starts NATS automatically, then runs all four processes in one terminal. On boot you'll see:
+**On first run**, hermes detects there's no `hermes/.env` yet, copies the template, and prompts once for the project directory:
+
+```
+First-run setup
+
+Where should agents read, write, and build? [../argus-workspace]
+> _
+```
+
+Press Enter to accept the default — Argus creates `argus-workspace/` next to the argus clone — or type any absolute or relative path. Hermes makes the directory if it doesn't exist and saves the value to `hermes/.env` for next time. The default produces this layout:
+
+```
+~/Desktop/Projects/
+├── argus/                       ← the argus clone (the tool)
+│   ├── .claude/   .gemini/   .codex/
+│   ├── hermes/                  ← engine (off limits to agents)
+│   └── argus-ui/                ← dashboard (off limits to agents)
+└── argus-workspace/             ← YOUR project — WORK_DIR points here
+```
+
+**Why a separate folder?** Agents are scoped to `WORK_DIR`. If `WORK_DIR` is the argus clone root, agents see `argus-ui/` and `hermes/` as existing code and may build into them. The default keeps agents out of argus internals entirely.
+
+**Custom location?** Type any absolute path at the prompt (`/Users/me/Documents/Portfolio`) or a relative path (`../my-project`, `~/argus-stuff`). On first boot, hermes copies the three role-doc folders (`.claude/`, `.gemini/`, `.codex/`) into whatever WORK_DIR you pick.
+
+**Other env vars** — `hermes/.env.example` contains optional fields (ports, auth, CORS, NATS URL) all with sensible defaults. After first run, edit `hermes/.env` directly to override any of them.
+
+After the prompt (or silently on subsequent runs), `npm run dev` starts NATS automatically and then runs all four processes in one terminal:
 
 ```
 Checking environment...
@@ -125,7 +114,7 @@ Open **http://localhost:5173**.
 [role-docs] Copied .codex → /your/WORK_DIR/.codex  (see README for the manual setup alternative)
 ```
 
-That's expected — it's the auto-copy step from the alternative layout above. Subsequent boots find the folders present and stay quiet.
+That's expected — it's the auto-copy step. Subsequent boots find the folders present and stay quiet.
 
 > **Windows note:** the combined `npm run dev` script uses POSIX-shell quoting that breaks under cmd/PowerShell. On Windows, either run each process in its own terminal using the individual scripts (`npm run dev:chat`, `npm run dev:build`, `npm run dev:warzone`, `npm run dev:ui`), or use WSL.
 
@@ -190,6 +179,7 @@ rm -rf /path/to/your-project/{.claude,.gemini,.codex}
 
 | Symptom | Fix |
 |---|---|
+| `[setup] WORK_DIR is unset and stdin is non-interactive` | Running argus in CI / Docker `-d` / detached mode where there's no terminal to prompt. Set `WORK_DIR` explicitly in `hermes/.env` (or your compose env) before starting. |
 | `✗ nats-server not found in PATH` | Install nats-server (see step 2), then re-run `npm run dev`. |
 | `✗ Port 4222 is in use by a non-NATS process` | Something else is bound to 4222. Stop it (`lsof -i :4222` to find it), or change NATS's port. |
 | `WORK_DIR does not exist` log on boot | Typo in `hermes/.env`'s `WORK_DIR`, or you forgot to `mkdir` the folder. Fix and restart. |
