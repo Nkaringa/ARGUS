@@ -17,6 +17,7 @@ Argus uses product versioning — major/minor/patch bumps reflect user-facing sc
 - feat: implement auto-approve feature for build tasks with configurabl… ([#21](https://github.com/Nkaringa/ARGUS/pull/21)) — @Nkaringa
 - Freat/Plan-review gate + Fix/agent kill recovery ([#22](https://github.com/Nkaringa/ARGUS/pull/22)) — @Nkaringa
 - feat: enhance UI components and hooks for improved functionality ([#23](https://github.com/Nkaringa/ARGUS/pull/23)) — @Nkaringa
+- feat: implement first-run environment bootstrap for project setup ([#24](https://github.com/Nkaringa/ARGUS/pull/24)) — @Nkaringa
 ## [1.0.0] — 2026-04-23
 
 First named release. Baseline for all future entries.
