@@ -28,6 +28,19 @@ On a non-A grade, you approve in the UI and Gemini revises from the same plan us
 
 ---
 
+## Features
+
+- **Three-agent build pipeline with iteration loop.** Claude plans → Gemini builds → Codex audits → grade A/B/C/F. Non-A grades route back to Gemini with the audit feedback; the plan stays frozen across iterations.
+- **Opt-in plan-review gate.** After Claude writes the plan, the pipeline pauses so you can read it. Approve to build, or send feedback that re-invokes Claude with the requested changes — before any code is written.
+- **Opt-in auto-approve loop.** Continuous build → audit → revise without per-iteration clicks. Configurable cap (default 10, max 20); cap-hit pauses for human review.
+- **Project continuation.** Pick an existing project from a dropdown; the agents reuse the slug and iterate on existing files in the same deliverable folder. Per-task meta files archive on completion; deliverables persist.
+- **Warzone discussion mode.** Three-agent debate before a build — Claude frames the idea, Gemini proposes a build approach, Codex audits both — producing a structured `WarZone.md` you can then reference in a real Build task.
+- **Live cockpit + workspace mode.** Pipeline-mode HUD with agent-color progress strip, real-time output stream, and inline stop control. Toggle to workspace mode for a filterable file browser + line-numbered preview that lets you watch files land in real time.
+- **Paginated task history with drill-down.** Searchable `/logs` view (filter by status / grade); click any row to expand a task-detail panel with the iteration grade trail, per-agent durations, and files written.
+- **Zero-config first run.** `git clone && npm install && npm run dev` — Argus prompts once for the project directory (defaults to a sibling `argus-workspace/` folder), creates it, and writes `.env` itself. Subsequent runs are silent.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -70,7 +83,7 @@ argus/
 │
 ├── argus-ui/                  React 19 + Vite + TailwindCSS 4
 │   ├── src/
-│   │   ├── components/        Build / Warzone / Chat / Logs views
+│   │   ├── components/        Build / Warzone / Chat / Logs / Archive views
 │   │   ├── hooks/             WebSocket hooks per server
 │   │   └── ...
 │   └── README.md              UI-specific docs
@@ -79,7 +92,7 @@ argus/
 │   ├── core/                  NATS, agents, SQLite, file watcher, role-doc bootstrap
 │   ├── workflows/             XState machines (build, warzone)
 │   ├── servers/               Express + WebSocket servers (chat/build/warzone)
-│   ├── .env.example           Template — copy to hermes/.env and set WORK_DIR
+│   ├── .env.example           Template — used by first-run bootstrap to seed hermes/.env
 │   └── HERMES.md              Engine reference
 │
 ├── .claude/CLAUDE.md          Planner role specification
@@ -99,17 +112,18 @@ argus/
 ### Build flow
 
 ```
-idle → planning → building → auditing → awaiting_approval → (loop | done)
-      (Claude)   (Gemini)   (Codex)
+idle → planning → [awaiting_plan_review] → building → auditing → awaiting_approval → (loop | done)
+      (Claude)         (opt-in)            (Gemini)   (Codex)
 ```
 
 | Stage | Agent | Output |
 |---|---|---|
 | `planning` | Claude | `<slug>-Plan.md` (slug chosen by Claude on a new project, or fixed by the UI on a continuation) |
+| `awaiting_plan_review` | — | opt-in (`planReview: true` on submit) — user reviews the plan and either approves or sends feedback that re-invokes Claude with the requested changes |
 | `building` | Gemini | `<slug>-Build-Log.md` (append-only within the task) + deliverables under `<slug>/` |
 | `auditing` | Codex | `<slug>-Build-Feedback.md` (grade A/B/C/F per audit) |
 
-On **grade A** the task is marked done. On **B/C/F** the user approves in the UI and Gemini rebuilds from the same `<slug>-Plan.md` using Codex's feedback. Retry depth is capped — on repeated failure the pipeline pauses for human review. As soon as the task completes (grade A, skip, or abort), the three meta files move into `Build-History/<slug>/{Plan.md, Build-Log.md, Build-Feedback.md}` (slug prefix dropped). The `<slug>/` deliverable folder stays in place — re-select it from the Build tab's "Project" dropdown to continue iterating on the same project.
+On **grade A** the task is marked done. On **B/C/F** Gemini rebuilds from the same `<slug>-Plan.md` using Codex's feedback — either after a human "Revise" click in the UI, or **automatically when auto-approve is enabled** (`autoApprove: true` on submit, default cap 10 iterations, max 20). Hitting the cap or repeated agent failure pauses the pipeline for human review. As soon as the task completes (grade A, skip, or abort), the three meta files move into `Build-History/<slug>/{Plan.md, Build-Log.md, Build-Feedback.md}` (slug prefix dropped). The `<slug>/` deliverable folder stays in place — re-select it from the Build tab's "Project" dropdown to continue iterating on the same project.
 
 ### Warzone flow (pre-build discussion)
 
@@ -164,6 +178,6 @@ The watcher uses globs (`*-Plan.md`, `*-Build-Log.md`, `*-Build-Feedback.md`) at
 
 ## Author
 
-Built by **[Nagesh Goud](https://github.com/Nkaringa)** — [karinga.dev](https://karinga.dev).
+Built by **[Nagesh Goud Karinga](https://github.com/Nkaringa)** 
 
-© 2026. All rights reserved.
+

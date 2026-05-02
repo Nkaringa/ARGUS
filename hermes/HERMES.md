@@ -54,7 +54,7 @@ hermes/
 │   ├── agents.json         Command templates for 7 agent keys (3 build + 3 warzone + 1 chat-specific Gemini)
 │   ├── archive.js          archiveLiveFiles (on task completion), archiveWarzoneFile, findLiveWarzoneSlug, listProjectFolders, listBuildHistory, listDiscussionHistory, listHistoryFolder, readBuildHistory, readDiscussionHistory, parseTaskFile, parseWarzoneFile, buildFileTree, isSafeSlug, isValidTaskSlug
 │   ├── auth.js             Shared-secret auth + CORS
-│   ├── db.js               SQLite (logEvent, createTask, completeTask, getHistory)
+│   ├── db.js               SQLite (logEvent, createTask, completeTask, getHistory, getHistoryCount, getTaskDetail, buildHistoryWhere)
 │   └── watcher.js          File watcher (*-Plan.md, *-Build-Log.md, *-Build-Feedback.md, *-WarZone.md)
 │
 ├── workflows/              ← XState state machines
@@ -64,7 +64,8 @@ hermes/
 ├── servers/                ← Express + WebSocket HTTP servers
 │   ├── chat.js             POST /chat
 │   ├── build.js            POST /task · /approval · /stop
-│   │                       GET /state · /history · /projects · /files · /files/content
+│   │                       GET /state · /history (paginated + filtered) · /tasks/:id/detail
+│   │                       GET /projects · /files · /files/content
 │   │                       GET /history/builds · /history/builds/:slug
 │   └── warzone.js          POST /discuss · /discuss/approval · /warzone/new-discussion · /stop
 │                           GET /state · /warzone.md
@@ -72,7 +73,7 @@ hermes/
 │
 ├── hermes.db               SQLite database (events + tasks tables) — git-ignored
 ├── .env                    WORK_DIR, ports, CHAT_DIR — git-ignored
-├── .env.example            Template — copy to .env and set WORK_DIR
+├── .env.example            Template — used by first-run bootstrap (`scripts/setup-env.js`) to seed `.env`
 ├── .gitignore              Ignores .env, hermes.db, runtime artifacts
 ├── HERMES.md               This file
 └── package.json
@@ -83,14 +84,14 @@ hermes/
 ## `.env` Reference
 
 ```
-WORK_DIR=/Users/.../your-project-folder
+WORK_DIR=/Users/.../argus-workspace
 CHAT_PORT=3001
 BUILD_PORT=3002
 WARZONE_PORT=3003
 CHAT_DIR=/tmp/argus-chat    ← chat Gemini cwd (isolated role doc)
 ```
 
-Only `WORK_DIR` is required. Everything else has defaults. No session UUIDs — every agent invocation is a fresh, one-shot spawn; Hermes gives the agent everything it needs via prompt + role docs + files on disk.
+Only `WORK_DIR` is required, and it's prompted on first `npm run dev` via `scripts/setup-env.js` — the bootstrap copies `.env.example` to `.env`, asks where agents should work (default `../argus-workspace` sibling to the argus clone), `mkdir -p`s the path, and writes the absolute path into `.env`. See [SETUP.md](../SETUP.md) step 3. Everything else has defaults. No session UUIDs — every agent invocation is a fresh, one-shot spawn; Hermes gives the agent everything it needs via prompt + role docs + files on disk.
 
 ---
 
@@ -144,8 +145,8 @@ This means there is no per-session state to manage, rotate, or expire. If a CLI 
 ## Build Pipeline States
 
 ```
-IDLE → PLANNING → BUILDING → AUDITING → AWAITING_APPROVAL → BUILDING (loop on B/C/F)
-                                     ↘ DONE (grade A)
+IDLE → PLANNING → [AWAITING_PLAN_REVIEW] → BUILDING → AUDITING → AWAITING_APPROVAL → BUILDING (loop on B/C/F)
+                       (opt-in)                                ↘ DONE (grade A)
 PLANNING/BUILDING/AUDITING → PAUSED (on failure after 1 retry)
 ```
 
@@ -153,13 +154,16 @@ PLANNING/BUILDING/AUDITING → PAUSED (on failure after 1 retry)
 |---|---|
 | idle | Ready for a task |
 | planning | Claude writing Plan.md |
+| awaiting_plan_review | Opt-in (`planReview: true` on submit) — user reviews the plan and either dispatches `APPROVE_PLAN` (→ BUILDING) or `REQUEST_PLAN_CHANGES` with feedback (→ PLANNING with Claude re-invoked) |
 | building | Gemini implementing, appending to Build-Log.md |
 | auditing | Codex grading, appending to Build-Feedback.md |
-| awaiting_approval | Grade B/C/F — user decides revise / skip / abort |
-| paused | Agent crashed or timed out after retry |
+| awaiting_approval | Grade B/C/F — user decides revise / skip / abort. **When `autoApprove: true` and `iterationCount < autoApproveCap`**, the entry action auto-dispatches `APPROVE` via `setImmediate` → BUILDING. Default cap 10, max 20. |
+| paused | Agent crashed or timed out after retry, or auto-approve cap hit |
 | done | Grade A — task complete |
 
-On B/C/F, **only Gemini re-runs**. Plan.md is frozen. Claude is not re-invoked.
+On B/C/F, **only Gemini re-runs**. Plan.md is frozen. Claude is not re-invoked. Plan-level changes happen only via the opt-in `awaiting_plan_review` gate before the first build.
+
+Both `planReview` and `autoApprove` are flags on `submitTask({ description, mode, slug?, planReview, autoApprove, autoApproveCap })`. They default off; the UI exposes them as toggles next to the task input. The `approve_plan` and `request_plan_changes` actions go through the existing `POST /approval` endpoint (no separate plan-review endpoint).
 
 ## Warzone Pipeline States
 
@@ -202,12 +206,16 @@ The watcher uses glob patterns (`*-Plan.md`, `*-Build-Log.md`, `*-Build-Feedback
 | `chat.output` | agents.js stdout/stderr (chat server) | chat server → UI |
 | `build.agent.started` | agents.js (build-pipeline invocations) | build server → UI |
 | `warzone.agent.started` | agents.js (warzone-pipeline invocations) | warzone server → UI |
+| `<pipeline>.agent.completed` | `agents.js#publishCompleted` (carries `agent`, `durationMs`, `exitCode`) | build/warzone/chat servers → UI; also aggregated by `db.js#getTaskDetail` |
 | `plan.completed` | watcher.js (`*-Plan.md`) | build workflow (extracts slug from `payload.file`) |
-| `agent.completed` | watcher.js (`*-Build-Log.md`) | build workflow |
+| `agent.completed` | watcher.js (`*-Build-Log.md`, carries `bytes_appended` / `post_size`) | build workflow + `db.js#getTaskDetail` |
 | `grade.received` | watcher.js (`*-Build-Feedback.md`) | build workflow |
 | `discuss.claude_done` | watcher.js (`*-WarZone.md`) | warzone workflow (extracts slug from `payload.file` on first round) |
 | `discuss.gemini_done` | watcher.js (`*-WarZone.md`) | warzone workflow |
 | `discuss.complete` | watcher.js (`*-WarZone.md`) | warzone workflow |
+| `agent.failed` | workflow internal (DB-only via `logEvent`, never on NATS) | persisted to `events` table for audit trail |
+
+**Dual-topic `agent.completed`.** The watcher emits an un-prefixed `agent.completed` when a new `### Iteration` lands in `<slug>-Build-Log.md` (workflow signal). `agents.js#publishCompleted` separately emits `<pipeline>.agent.completed` with timing + exit-code metadata when a CLI invocation ends. `db.js#getTaskDetail` matches both forms when aggregating per-agent durations for the /logs detail view.
 
 
 
@@ -223,6 +231,8 @@ Two tables:
 - **tasks** — completed task records: description, grade, iterations, timestamps, status (`RUNNING` / `DONE` / `STALE` / `ABORTED`). On hermes boot any `RUNNING` task left over from a prior crash is marked `STALE`.
 
 Everything Hermes publishes to NATS is also written to `events` via `logEvent()` — plus workflow-internal events like `agent.failed` that never hit NATS. So the events table is the complete trace; NATS is the live broadcast subset.
+
+`db.js#getTaskDetail(taskId)` aggregates one task's events into `{ slug, mode, autoApprove, autoApproveCap, planReview, gradeTrail, agentTotals, files, failures, truncated }` for the /logs detail view. Scans up to 1000 events per task as a safety cap; the `truncated` flag in the response surfaces when exceeded.
 
 ---
 

@@ -122,7 +122,7 @@ That's expected — it's the auto-copy step. Subsequent boots find the folders p
 
 ## Runtime files in your project folder
 
-During a build, Hermes and the agents generate task-named files at `WORK_DIR` (your project folder — the `Portfolio/` from step 3). Claude picks a kebab-case slug for the task (e.g. `landing-page`); Gemini and Codex use the same slug for their files.
+During a build, Hermes and the agents generate task-named files at `WORK_DIR` (your project folder — `argus-workspace/` by default, or whatever path you typed at the first-run prompt). Claude picks a kebab-case slug for the task (e.g. `landing-page`); Gemini and Codex use the same slug for their files.
 
 | File | Owner | Purpose |
 |---|---|---|
