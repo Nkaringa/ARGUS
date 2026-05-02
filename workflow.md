@@ -43,6 +43,7 @@ Each agent has a role spec in its dotfile: `.claude/CLAUDE.md`, `.gemini/GEMINI.
 
 ```
 Submit task via Argus UI
+   { description, mode, slug?, planReview?, autoApprove?, autoApproveCap? }
         ↓
 Hermes — state: IDLE → PLANNING
         ↓
@@ -53,7 +54,21 @@ Claude CLI runs:
         ↓
 watcher.js detects *-Plan.md match
         ↓  publishes: plan.completed { file: '<slug>-Plan.md' }
-Hermes — state: PLANNING → BUILDING
+
+   ┌── planReview === true (opt-in) ─────────────────────────────────┐
+   │   State: PLANNING → AWAITING_PLAN_REVIEW                        │
+   │   UI shows plan + Approve Plan / Request Plan Changes buttons   │
+   │                                                                 │
+   │   Approve Plan          → State: BUILDING                       │
+   │   Request Plan Changes  → State: PLANNING (Claude re-invoked    │
+   │     (with feedback)        with feedback baked into prompt)     │
+   │                                                                 │
+   │   Both actions go through POST /approval (no separate endpoint) │
+   └─────────────────────────────────────────────────────────────────┘
+   ┌── planReview omitted (default) ─────────────────────────────────┐
+   │   State: PLANNING → BUILDING (immediate)                        │
+   └─────────────────────────────────────────────────────────────────┘
+
   - new mode: slug captured from filename
   - continue mode: slug must match the pre-set value, else PLAN_FAILED (drift safeguard)
         ↓
@@ -80,7 +95,15 @@ watcher.js detects grade
         │   State: AUDITING → AWAITING_APPROVAL                      │
         │   UI shows grade + Revise / Skip / Abort buttons           │
         │                                                            │
-        │   Revise → BUILDING (Gemini reads <slug>-Build-Feedback.md │
+        │   ── autoApprove === true && iter < cap ────────────────── │
+        │   │  Entry action auto-dispatches APPROVE via              │
+        │   │  setImmediate. State: AWAITING_APPROVAL → BUILDING     │
+        │   │  (no UI click required). Default cap 10, max 20.       │
+        │   │  Cap-hit → PAUSED for human review.                    │
+        │   ──────────────────────────────────────────────────────── │
+        │                                                            │
+        │   Revise (manual) → BUILDING (Gemini reads                 │
+        │            <slug>-Build-Feedback.md;                       │
         │            <slug>-Plan.md UNCHANGED, Claude not re-invoked)│
         │   Skip   → DONE                                            │
         │   Abort  → IDLE                                            │
@@ -94,9 +117,16 @@ IDLE
   → task submitted → PLANNING
 
 PLANNING
-  → any *-Plan.md file ends with **Plan Status:** READY → BUILDING (slug captured)
+  → *-Plan.md ends with **Plan Status:** READY:
+      planReview === true   → AWAITING_PLAN_REVIEW
+      planReview omitted    → BUILDING (slug captured)
   → agent failed, retry < 1 → PLANNING (retry)
   → agent failed, retry ≥ 1 → PAUSED
+
+AWAITING_PLAN_REVIEW           ← opt-in via planReview: true on submit
+  → APPROVE_PLAN              → BUILDING
+  → REQUEST_PLAN_CHANGES(fb)  → PLANNING (Claude re-invoked with feedback)
+  → Abort                     → IDLE
 
 BUILDING
   → new ### Iteration in <slug>-Build-Log.md → AUDITING
@@ -110,6 +140,9 @@ AUDITING
   → agent failed, retry ≥ 1 → PAUSED
 
 AWAITING_APPROVAL
+  → entry: if autoApprove && iterationCount < autoApproveCap,
+           setImmediate(dispatch APPROVE) → BUILDING
+           (default cap 10, max 20; cap-hit → falls through to manual)
   → Approve → BUILDING (revision — Plan.md unchanged)
   → Skip    → DONE
   → Abort   → IDLE
@@ -122,7 +155,9 @@ DONE
   → new task submitted → PLANNING
 ```
 
-**Design choice:** On B/C/F the plan is frozen — only Gemini rebuilds. The rationale is that Claude's plan is rarely the bug; when it is, the iteration limit will surface that and you can abort manually. Avoids a Claude re-planning loop.
+Both `planReview` and `autoApprove` are opt-in flags on `submitTask`. The plan-review and approval actions all go through the existing `POST /approval` endpoint (action types: `approve_plan`, `request_plan_changes`, `approve`, `skip`, `retry`, `abort`).
+
+**Design choice:** On B/C/F the plan is frozen — only Gemini rebuilds. Claude's plan is rarely the bug; when it is, the auto-approve cap or human review will surface that. Plan-level revisions happen explicitly via `awaiting_plan_review` *before* the first build, not during the audit loop.
 
 ---
 
@@ -185,7 +220,7 @@ Claude goes first because framing the idea is a planning task. Gemini then propo
 | `<slug>-WarZone.md` | all three | append-only within a topic; Claude picks the slug | Three-phase discussion log for one topic |
 | `WarZone-History/<slug>/` | Hermes | created when user clicks **New Discussion** | Archive of past discussion topics |
 | `hermes/core/agents.json` | — | static config | Agent command templates + completion signals |
-| `hermes/.env` | — | static config | `WORK_DIR`, ports, `CHAT_DIR` |
+| `hermes/.env` | — | static config | `WORK_DIR`, ports, `CHAT_DIR` — `WORK_DIR` is prompted on first `npm run dev` via `scripts/setup-env.js` |
 | `hermes/hermes.db` | — | SQLite | Event stream + task history |
 
 Agents are forbidden from writing to files they don't own. Role docs enforce this.
@@ -204,7 +239,7 @@ NK-Base/
 │   │   ├── agents.json        agent configs (7 entries: builder, planner, codex_auditor + 3 discuss variants + chat_builder)
 │   │   ├── archive.js         archiveLiveFiles (on task completion) + per-task + history list/read helpers + slug parsers
 │   │   ├── auth.js            shared-secret auth + CORS
-│   │   ├── db.js              SQLite (logEvent, createTask, completeTask, getHistory)
+│   │   ├── db.js              SQLite (logEvent, createTask, completeTask, getHistory, getHistoryCount, getTaskDetail, buildHistoryWhere)
 │   │   ├── events.js          NATS pub/sub
 │   │   └── watcher.js         file watcher (*-Plan.md, *-Build-Log.md, *-Build-Feedback.md, *-WarZone.md)
 │   │
@@ -214,7 +249,8 @@ NK-Base/
 │   │
 │   ├── servers/
 │   │   ├── build.js           POST /task · /approval · /stop
-│   │   │                      GET /state · /history · /projects · /files · /files/content
+│   │   │                      GET /state · /history (paginated + filtered) · /tasks/:id/detail
+│   │   │                      GET /projects · /files · /files/content
 │   │   │                      GET /history/builds · /history/builds/:slug
 │   │   ├── chat.js            POST /chat
 │   │   └── warzone.js         POST /discuss · /discuss/approval · /warzone/new-discussion · /stop
@@ -225,10 +261,16 @@ NK-Base/
 │   ├── .env                   environment config
 │   └── HERMES.md              engine reference
 │
-├── .claude/CLAUDE.md          Planner role spec
+├── .claude/CLAUDE.md          Planner role spec (template, auto-copied to WORK_DIR on first boot)
 ├── .gemini/GEMINI.md          Builder role spec
-├── .codex/CODEX.md            Auditor role spec
-│
+└── .codex/CODEX.md            Auditor role spec
+```
+
+Runtime files live in `WORK_DIR` — **a separate directory, by default `argus-workspace/` as a sibling to NK-Base** (set on first `npm run dev` via `scripts/setup-env.js`):
+
+```
+<WORK_DIR>/                    e.g. ~/Desktop/Karinga.dev/argus-workspace
+├── .claude/   .gemini/   .codex/   role docs auto-copied from NK-Base on first boot
 ├── <slug>/                    deliverable folder per project (Gemini's HTML/CSS/JS/code)
 ├── <slug>-Plan.md             created at runtime (Claude; slug picked by Claude or fixed by UI)
 ├── <slug>-Build-Log.md        created at runtime (Gemini)
@@ -249,12 +291,16 @@ NK-Base/
 | `chat.output` | agents.js stdout/stderr (chat server) | chat server → UI |
 | `build.agent.started` | agents.js (build-pipeline invocations) | build server → UI |
 | `warzone.agent.started` | agents.js (warzone-pipeline invocations) | warzone server → UI |
+| `<pipeline>.agent.completed` | `agents.js#publishCompleted` (carries `agent`, `durationMs`, `exitCode`) | build/warzone/chat servers → UI; aggregated by `db.js#getTaskDetail` |
 | `plan.completed` | watcher.js (`*-Plan.md`) | build workflow (extracts slug from filename) |
-| `agent.completed` | watcher.js (`*-Build-Log.md`) | build workflow |
+| `agent.completed` | watcher.js (`*-Build-Log.md`, carries `bytes_appended` / `post_size`) | build workflow + `db.js#getTaskDetail` |
 | `grade.received` | watcher.js (`*-Build-Feedback.md`) | build workflow |
 | `discuss.claude_done` | watcher.js (`*-WarZone.md`) | warzone workflow (extracts slug from filename) |
 | `discuss.gemini_done` | watcher.js (`*-WarZone.md`) | warzone workflow |
 | `discuss.complete` | watcher.js (`*-WarZone.md`) | warzone workflow |
+| `agent.failed` | workflow internal (DB-only via `logEvent`, never on NATS) | persisted to `events` for audit trail |
+
+**Dual-topic `agent.completed`.** The watcher emits an un-prefixed `agent.completed` when a new `### Iteration` lands in the build log (workflow signal). `agents.js#publishCompleted` separately emits `<pipeline>.agent.completed` with timing + exit-code metadata when a CLI invocation ends. The /logs detail aggregator (`getTaskDetail`) matches both forms.
 
 ---
 
