@@ -19,6 +19,7 @@
 const { spawn, spawnSync } = require('child_process');
 const net = require('net');
 const path = require('path');
+const { bootstrapEnv } = require('./setup-env');
 
 const NATS_PORT = 4222;
 const NATS_HOST = '127.0.0.1';
@@ -128,6 +129,7 @@ Then run: npm run dev
 }
 
 async function main() {
+    await bootstrapEnv();
     banner('Checking environment...');
 
     // (1) Is nats-server installed?
