@@ -19,6 +19,7 @@ Argus uses product versioning — major/minor/patch bumps reflect user-facing sc
 - feat: enhance UI components and hooks for improved functionality ([#23](https://github.com/Nkaringa/ARGUS/pull/23)) — @Nkaringa
 - feat: implement first-run environment bootstrap for project setup ([#24](https://github.com/Nkaringa/ARGUS/pull/24)) — @Nkaringa
 - Sweep across the five repo docs to bring them current with shipped ([#25](https://github.com/Nkaringa/ARGUS/pull/25)) — @Nkaringa
+- Add MIT license ([#26](https://github.com/Nkaringa/ARGUS/pull/26)) — @Nkaringa
 ## [1.0.0] — 2026-04-23
 
 First named release. Baseline for all future entries.
